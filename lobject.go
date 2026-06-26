@@ -5,11 +5,10 @@ import (
 	"unsafe"
 )
 
-// Value is a Lua 5.4 runtime value. It follows the tagged-struct representation
-// decided for the 5.4 rewrite (see brain decision gopher-lua-nan-boxing-not-
-// pursued): scalars are stored inline so integer/float arithmetic does not box,
-// and GC objects are held through a normal pointer (GC-safe, unlike true
-// NaN-boxing which Go's precise GC cannot follow).
+// Value is a Lua 5.4 runtime value. It uses a tagged-struct representation:
+// scalars are stored inline so integer/float arithmetic does not box, and GC
+// objects are held through a normal pointer (GC-safe, unlike true NaN-boxing
+// which Go's precise GC cannot follow).
 //
 // Layout (24 bytes on 64-bit): tag(1) + pad + scalar(8) + gc(8).
 type Value struct {

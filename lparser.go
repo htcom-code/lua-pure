@@ -1076,6 +1076,10 @@ func (p *parser) statlist() {
 
 func (p *parser) mainfunc(proto *Proto) {
 	p.c.openFunc(proto)
+	// PUC emits the main chunk's VARARGPREP before reading the first token, when
+	// ls->lastline is still its initial value (1). Sync lastline from the lexer
+	// so that instruction is stamped with line 1, matching luac exactly.
+	p.fs().lastline = p.ls.lastline
 	p.c.setVararg(p.fs(), 0)
 	env := p.c.allocUpvalue(p.fs())
 	p.fs().f.Upvalues[env] = UpvalDesc{Name: p.c.envName, InStack: true, Index: 0, Kind: VarKindReg}

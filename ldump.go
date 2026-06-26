@@ -9,53 +9,63 @@ import (
 
 // Binary chunk (de)serialization for string.dump / load(binary chunk).
 //
-// This is gopher-lua's OWN format, keyed to this engine's Proto layout. It is
-// deliberately NOT PUC-Lua bytecode: the luapure opcodes match PUC's instruction
-// set, but the proto/value model is Go, so a portable bytecode file is neither
-// possible nor a goal (the C standard calls dumped bytecode implementation
-// defined). The contract honoured is the observable one:
-// load(string.dump(f))(args) == f(args).
+// This is a faithful Go port of PUC-Lua 5.4's ldump.c / lundump.c: the wire
+// format is byte-identical to what the reference luac 5.4.8 produces on a
+// little-endian 64-bit platform (sizeof Instruction=4, lua_Integer=8,
+// lua_Number=8). A chunk dumped here loads in reference Lua, and a chunk
+// produced by luac 5.4.8 loads here. The whole format — varint sizes, the
+// size+1 string convention, PUC constant type tags, and the compressed
+// lineinfo/abslineinfo debug layout — mirrors the C sources field for field.
 //
-// The format is versioned and not portable across engine versions — the magic
-// plus version byte reject any blob this exact format did not produce. Upvalue
-// *values* are not serialized (PUC does not either); a reloaded function binds
-// its upvalues afresh, with _ENV rebound by the loader like any loaded chunk.
+// luapure's internal Proto keeps absolute source lines (LineInfo, 1:1 with
+// Code). PUC instead stores signed-byte deltas (lineinfo) plus periodic
+// absolute reference points (abslineinfo). dump re-runs PUC's savelineinfo
+// compression over our absolute lines, and undump decompresses back to
+// absolute lines; because the codegen emits PUC-identical instructions, the
+// recompressed bytes match luac's exactly. Upvalue *values* are not
+// serialized (PUC does not either); a reloaded function binds its upvalues
+// afresh, with _ENV rebound by the loader like any loaded chunk.
 //
 // SECURITY: undump reconstructs a Proto from untrusted bytes. It validates
 // aggressively — bounded slice lengths, bounded recursion depth, opcode
-// validity, and in-range nested-closure indices — and never panics on malformed
-// input, returning an error instead. Fully sandboxing hostile bytecode is not a
-// goal; embedders that must not load binary chunks should reject them first.
-// The binary chunk begins with PUC Lua 5.4's exact header (signature, version,
-// format, LUAC_DATA, type sizes, LUAC_INT, LUAC_NUM) so the conformance suite's
-// header/size checks pass and any non-5.4 blob is rejected. The function body
-// that follows is still gopher-lua's own format keyed to this engine's Proto
-// layout (a portable bytecode file is neither possible nor a goal); the contract
-// honoured is load(string.dump(f))(args) == f(args).
+// validity, and in-range nested-closure indices — and never panics on
+// malformed input, returning an error instead. Fully sandboxing hostile
+// bytecode is not a goal; embedders that must not load binary chunks should
+// reject them first.
 const (
-	luaSignature = "\x1bLua"             // LUA_SIGNATURE
-	luacVersion  = 0x54                  // 5.4
-	luacFormat   = 0                     // LUAC_FORMAT
-	luacData     = "\x19\x93\r\n\x1a\n"  // LUAC_DATA (catches transfer corruption)
-	luacInt      = 0x5678                // LUAC_INT (endianness/size check)
-	luacNum      = 370.5                 // LUAC_NUM (float format check)
-	dumpInstSize = 4                     // sizeof(Instruction)
-	dumpIntSize  = 8                     // sizeof(lua_Integer)
-	dumpNumSize  = 8                     // sizeof(lua_Number)
+	luaSignature = "\x1bLua"            // LUA_SIGNATURE
+	luacVersion  = 0x54                 // LUAC_VERSION (5.4)
+	luacFormat   = 0                    // LUAC_FORMAT (official format)
+	luacData     = "\x19\x93\r\n\x1a\n" // LUAC_DATA (catches transfer corruption)
+	luacInt      = 0x5678               // LUAC_INT (endianness/size check)
+	luacNum      = 370.5                // LUAC_NUM (float format check)
+	dumpInstSize = 4                    // sizeof(Instruction)
+	dumpIntSize  = 8                    // sizeof(lua_Integer)
+	dumpNumSize  = 8                    // sizeof(lua_Number)
 
 	dumpMaxItems = 1 << 26 // ceiling on any length-prefixed slice/string
 	dumpMaxDepth = 200     // ceiling on nested-prototype recursion
+
+	// Line-info compression (PUC lcode.c / ldebug.h).
+	limLineDiff = 0x80  // LIMLINEDIFF: relative delta must fit a signed byte
+	maxIwthAbs  = 128   // MAXIWTHABS: instructions between absolute references
+	absLineInfo = -0x80 // ABSLINEINFO: marker that an absolute entry applies
 )
 
-// Constant type tags (constants are only nil/bool/number/string by construction).
+// Constant type tags — PUC ttypetag values (makevariant), so a dumped
+// constant table is byte-identical to luac's.
 const (
-	dumpConstNil = iota
-	dumpConstFalse
-	dumpConstTrue
-	dumpConstFloat
-	dumpConstInt
-	dumpConstString
+	tagVNil    = 0x00 // LUA_VNIL
+	tagVFalse  = 0x01 // LUA_VFALSE
+	tagVTrue   = 0x11 // LUA_VTRUE
+	tagVNumInt = 0x03 // LUA_VNUMINT
+	tagVNumFlt = 0x13 // LUA_VNUMFLT
+	tagVShrStr = 0x04 // LUA_VSHRSTR
+	tagVLngStr = 0x14 // LUA_VLNGSTR
 )
+
+// maxShortLen (LUAI_MAXSHORTLEN, the short/long string boundary) is defined in
+// lobject.go and reused here to choose the LUA_VSHRSTR vs LUA_VLNGSTR tag.
 
 var (
 	errBadBinaryChunk = errors.New("malformed binary chunk")
@@ -103,48 +113,148 @@ func (d *dumpWriter) u64(v uint64) {
 	_, d.err = d.w.Write(d.buf[:8])
 }
 
-func (d *dumpWriter) i(v int) { d.u64(uint64(int64(v))) }
+// size writes a value as PUC dumpSize does: 7-bit groups, most significant
+// first, with the high bit set on the final (least significant) byte.
+func (d *dumpWriter) size(x uint64) {
+	if d.err != nil {
+		return
+	}
+	var b [10]byte // ceil(64/7) = 10 groups is the worst case
+	n := 0
+	for {
+		n++
+		b[len(b)-n] = byte(x) & 0x7f
+		x >>= 7
+		if x == 0 {
+			break
+		}
+	}
+	b[len(b)-1] |= 0x80 // mark last byte
+	_, d.err = d.w.Write(b[len(b)-n:])
+}
 
+// vInt mirrors PUC dumpInt: a (non-negative) int written through dumpSize.
+func (d *dumpWriter) vInt(v int) { d.size(uint64(v)) }
+
+// str writes a present string with the PUC size+1 convention.
 func (d *dumpWriter) str(s string) {
-	d.u32(uint32(len(s)))
+	d.size(uint64(len(s)) + 1)
 	d.raw(s)
 }
+
+// nullStr writes PUC's NULL string (size 0): on load it means "inherit the
+// parent prototype's source".
+func (d *dumpWriter) nullStr() { d.size(0) }
 
 func (d *dumpWriter) constant(k Value) {
 	switch {
 	case k.IsNil():
-		d.u8(dumpConstNil)
+		d.u8(tagVNil)
 	case k.IsBool():
 		if k.AsBool() {
-			d.u8(dumpConstTrue)
+			d.u8(tagVTrue)
 		} else {
-			d.u8(dumpConstFalse)
+			d.u8(tagVFalse)
 		}
 	case k.IsInt():
-		d.u8(dumpConstInt)
-		d.u64(uint64(k.AsInt()))
+		d.u8(tagVNumInt)
+		d.u64(uint64(k.AsInt())) // dumpInteger: 8-byte little-endian
 	case k.IsFloat():
-		d.u8(dumpConstFloat)
-		d.u64(math.Float64bits(k.AsFloat()))
+		d.u8(tagVNumFlt)
+		d.u64(math.Float64bits(k.AsFloat())) // dumpNumber: 8-byte LE double
 	case k.IsString():
-		d.u8(dumpConstString)
-		d.str(k.Str())
+		s := k.Str()
+		if len(s) <= maxShortLen {
+			d.u8(tagVShrStr)
+		} else {
+			d.u8(tagVLngStr)
+		}
+		d.str(s)
 	default:
 		d.err = errBadBinaryChunk
 	}
 }
 
+// compressLines reconstructs PUC's lineinfo (signed-byte deltas) and
+// abslineinfo (absolute reference points) from luapure's absolute LineInfo, by
+// replaying lcode.c's savelineinfo over the instruction sequence. Because the
+// state it threads (previousline, iwthabs) is fully determined by the line
+// sequence and codegen emits luac-identical instructions, the bytes produced
+// here match luac's exactly.
+type absEntry struct{ pc, line int }
+
+func compressLines(lines []int32, lineDefined int) (lineinfo []byte, abs []absEntry) {
+	lineinfo = make([]byte, len(lines))
+	previousline := lineDefined
+	iwthabs := 0
+	for pc, l := range lines {
+		line := int(l)
+		linedif := line - previousline
+		takeAbs := false
+		if linedif >= limLineDiff || linedif <= -limLineDiff {
+			takeAbs = true // delta does not fit a signed byte
+		} else {
+			if iwthabs >= maxIwthAbs {
+				takeAbs = true // too many instructions since last absolute ref
+			}
+			iwthabs++ // PUC's iwthabs++ runs whenever the delta fits
+		}
+		if takeAbs {
+			abs = append(abs, absEntry{pc: pc, line: line})
+			linedif = absLineInfo
+			iwthabs = 1
+		}
+		lineinfo[pc] = byte(int8(linedif))
+		previousline = line
+	}
+	return lineinfo, abs
+}
+
+func (d *dumpWriter) debug(p *Proto, strip bool) {
+	if strip {
+		d.vInt(0) // lineinfo
+		d.vInt(0) // abslineinfo
+		d.vInt(0) // locvars
+		d.vInt(0) // upvalue names
+		return
+	}
+
+	lineinfo, abs := compressLines(p.LineInfo, p.LineDefined)
+	d.vInt(len(lineinfo))
+	for _, b := range lineinfo {
+		d.u8(b)
+	}
+
+	d.vInt(len(abs))
+	for _, a := range abs {
+		d.vInt(a.pc)
+		d.vInt(a.line)
+	}
+
+	d.vInt(len(p.LocVars))
+	for _, l := range p.LocVars {
+		d.str(l.Name)
+		d.vInt(l.StartPc)
+		d.vInt(l.EndPc)
+	}
+
+	d.vInt(len(p.Upvalues))
+	for _, uv := range p.Upvalues {
+		d.str(uv.Name)
+	}
+}
+
 func (d *dumpWriter) function(p *Proto, strip bool, parentSource string) {
 	// Source dedup (PUC dumpFunction): a nested proto that shares its parent's
-	// source writes an empty string and inherits it on load, so the source text
-	// is stored once for the whole chunk rather than per proto.
+	// source, or any proto when stripping, writes NULL and inherits the source
+	// on load, so the source text is stored once for the whole chunk.
 	if strip || p.Source == parentSource {
-		d.str("")
+		d.nullStr()
 	} else {
 		d.str(p.Source)
 	}
-	d.i(p.LineDefined)
-	d.i(p.LastLineDef)
+	d.vInt(p.LineDefined)
+	d.vInt(p.LastLineDef)
 	d.u8(p.NumParams)
 	if p.IsVararg {
 		d.u8(1)
@@ -153,30 +263,21 @@ func (d *dumpWriter) function(p *Proto, strip bool, parentSource string) {
 	}
 	d.u8(p.MaxStackSize)
 
-	d.u32(uint32(len(p.Code)))
+	// Code.
+	d.vInt(len(p.Code))
 	for _, c := range p.Code {
 		d.u32(uint32(c))
 	}
 
-	d.u32(uint32(len(p.Constants)))
+	// Constants.
+	d.vInt(len(p.Constants))
 	for _, k := range p.Constants {
 		d.constant(k)
 	}
 
-	d.u32(uint32(len(p.Protos)))
-	for _, np := range p.Protos {
-		d.function(np, strip, p.Source)
-	}
-
-	// Upvalue descriptors are always needed (the VM binds nested closures from
-	// them); only the names are debug info, blanked when stripping.
-	d.u32(uint32(len(p.Upvalues)))
+	// Upvalue descriptors (instack/idx/kind only; names live in debug info).
+	d.vInt(len(p.Upvalues))
 	for _, uv := range p.Upvalues {
-		if strip {
-			d.str("")
-		} else {
-			d.str(uv.Name)
-		}
 		if uv.InStack {
 			d.u8(1)
 		} else {
@@ -186,26 +287,16 @@ func (d *dumpWriter) function(p *Proto, strip bool, parentSource string) {
 		d.u8(uv.Kind)
 	}
 
-	// Line/local debug info is optional: a stripped dump omits it (a single 0
-	// byte), so the reloaded function reports no line info.
-	if strip {
-		d.u8(0)
-		return
+	// Nested prototypes.
+	d.vInt(len(p.Protos))
+	for _, np := range p.Protos {
+		d.function(np, strip, p.Source)
 	}
-	d.u8(1)
-	d.u32(uint32(len(p.LineInfo)))
-	for _, x := range p.LineInfo {
-		d.u32(uint32(x))
-	}
-	d.u32(uint32(len(p.LocVars)))
-	for _, l := range p.LocVars {
-		d.str(l.Name)
-		d.i(l.StartPc)
-		d.i(l.EndPc)
-	}
+
+	d.debug(p, strip)
 }
 
-// dumpProto serializes a function prototype into a self-describing binary chunk.
+// dumpProto serializes a function prototype into a PUC 5.4 precompiled chunk.
 // When strip is true, debug info (source, line positions, local and upvalue
 // names) is omitted, yielding a smaller blob that reports no line info.
 func dumpProto(w io.Writer, p *Proto, strip bool) error {
@@ -217,9 +308,10 @@ func dumpProto(w io.Writer, p *Proto, strip bool) error {
 	d.u8(dumpInstSize)
 	d.u8(dumpIntSize)
 	d.u8(dumpNumSize)
-	d.u64(uint64(luacInt))            // LUAC_INT, 8-byte little-endian
-	d.u64(math.Float64bits(luacNum))  // LUAC_NUM, 8-byte little-endian double
-	d.function(p, strip, "") // top level has no parent source to inherit
+	d.u64(uint64(luacInt))           // LUAC_INT, 8-byte little-endian
+	d.u64(math.Float64bits(luacNum)) // LUAC_NUM, 8-byte little-endian double
+	d.u8(byte(len(p.Upvalues)))      // closure's nupvalues (PUC luaU_dump)
+	d.function(p, strip, "")         // top level has no parent source to inherit
 	return d.err
 }
 
@@ -263,12 +355,32 @@ func (u *undumpReader) fail() {
 func (u *undumpReader) u8() byte    { return u.read(1)[0] }
 func (u *undumpReader) u32() uint32 { return binary.LittleEndian.Uint32(u.read(4)) }
 func (u *undumpReader) u64() uint64 { return binary.LittleEndian.Uint64(u.read(8)) }
-func (u *undumpReader) i() int      { return int(int64(u.u64())) }
+
+// size reads a PUC varint (loadUnsigned), rejecting overflow.
+func (u *undumpReader) size() uint64 {
+	const limit = ^uint64(0) >> 7
+	var x uint64
+	for {
+		b := u.u8()
+		if u.err != nil {
+			return 0
+		}
+		if x >= limit {
+			u.err = errBadBinaryChunk // integer overflow
+			return 0
+		}
+		x = (x << 7) | uint64(b&0x7f)
+		if b&0x80 != 0 {
+			break
+		}
+	}
+	return x
+}
 
 // count reads a length prefix and rejects values beyond dumpMaxItems so a
 // hostile blob cannot drive a huge allocation.
 func (u *undumpReader) count() int {
-	n := u.u32()
+	n := u.size()
 	if u.err != nil {
 		return 0
 	}
@@ -279,38 +391,140 @@ func (u *undumpReader) count() int {
 	return int(n)
 }
 
-func (u *undumpReader) str() string {
-	n := u.count()
-	if u.err != nil || n == 0 {
-		return ""
+// vInt reads a PUC dumpInt (a non-negative int through the varint encoding).
+func (u *undumpReader) vInt() int {
+	n := u.size()
+	if u.err != nil {
+		return 0
+	}
+	if n > uint64(maxInt32) {
+		u.err = errBadBinaryChunk
+		return 0
+	}
+	return int(n)
+}
+
+const maxInt32 = 1<<31 - 1
+
+// strN reads a PUC string. A stored size of 0 means NULL (the caller treats
+// that as "inherit"); otherwise the real length is size-1.
+func (u *undumpReader) strN() (string, bool) {
+	size := u.size()
+	if u.err != nil || size == 0 {
+		return "", true // NULL
+	}
+	n := size - 1
+	if n == 0 {
+		return "", false
+	}
+	if n > dumpMaxItems {
+		u.err = errBadBinaryChunk
+		return "", false
 	}
 	b := make([]byte, n)
 	if _, err := io.ReadFull(u.r, b); err != nil {
 		u.err = errTruncated
-		return ""
+		return "", false
 	}
-	return string(b)
+	return string(b), false
+}
+
+// str reads a string where NULL and empty are equivalent (locvar/upvalue names).
+func (u *undumpReader) str() string {
+	s, _ := u.strN()
+	return s
 }
 
 func (u *undumpReader) constant() Value {
 	switch u.u8() {
-	case dumpConstNil:
+	case tagVNil:
 		return Nil
-	case dumpConstFalse:
+	case tagVFalse:
 		return False
-	case dumpConstTrue:
+	case tagVTrue:
 		return True
-	case dumpConstFloat:
+	case tagVNumFlt:
 		return Float(math.Float64frombits(u.u64()))
-	case dumpConstInt:
+	case tagVNumInt:
 		return Int(int64(u.u64()))
-	case dumpConstString:
+	case tagVShrStr, tagVLngStr:
 		return MkString(u.str())
 	default:
 		if u.err == nil {
 			u.err = errBadBinaryChunk
 		}
 		return Nil
+	}
+}
+
+// decompressLines rebuilds luapure's absolute LineInfo from PUC's lineinfo
+// (signed-byte deltas, with ABSLINEINFO markers) and abslineinfo entries,
+// reversing compressLines / lcode.c savelineinfo.
+func decompressLines(lineinfo []byte, abs []absEntry, lineDefined int) ([]int32, bool) {
+	out := make([]int32, len(lineinfo))
+	previousline := lineDefined
+	absIdx := 0
+	for pc := range lineinfo {
+		if int8(lineinfo[pc]) == absLineInfo {
+			if absIdx >= len(abs) || abs[absIdx].pc != pc {
+				return nil, false // marker without a matching absolute entry
+			}
+			previousline = abs[absIdx].line
+			absIdx++
+		} else {
+			previousline += int(int8(lineinfo[pc]))
+		}
+		out[pc] = int32(previousline)
+	}
+	if absIdx != len(abs) {
+		return nil, false // stray absolute entries
+	}
+	return out, true
+}
+
+func (u *undumpReader) debug(p *Proto) {
+	// lineinfo: signed-byte deltas, one per instruction.
+	nline := u.count()
+	lineinfo := make([]byte, nline)
+	for i := range lineinfo {
+		lineinfo[i] = u.u8()
+	}
+
+	// abslineinfo: absolute reference points.
+	nabs := u.count()
+	abs := make([]absEntry, nabs)
+	for i := range abs {
+		abs[i] = absEntry{pc: u.vInt(), line: u.vInt()}
+	}
+
+	// locvars.
+	p.LocVars = make([]LocVar, u.count())
+	for i := range p.LocVars {
+		p.LocVars[i] = LocVar{Name: u.str(), StartPc: u.vInt(), EndPc: u.vInt()}
+	}
+
+	// upvalue names: PUC writes either 0 or exactly sizeupvalues of them.
+	nup := u.count()
+	if nup != 0 {
+		if nup != len(p.Upvalues) {
+			u.fail()
+			return
+		}
+		for i := range p.Upvalues {
+			p.Upvalues[i].Name = u.str()
+		}
+	}
+
+	if u.err != nil {
+		return
+	}
+	if nline > 0 {
+		lines, ok := decompressLines(lineinfo, abs, p.LineDefined)
+		if !ok {
+			u.fail()
+			return
+		}
+		p.LineInfo = lines
 	}
 }
 
@@ -326,12 +540,13 @@ func (u *undumpReader) function(parentSource string) *Proto {
 	defer func() { u.depth-- }()
 
 	p := &Proto{}
-	// Source dedup: an empty source means "same as the parent" (PUC inherits the
-	// enclosing proto's source). A genuinely empty source — a stripped top-level
-	// dump — leaves it NULL in PUC; we render that as "=?" so shortSrc yields "?"
-	// at every observation point. Children inherit the raw (possibly empty) src.
-	src := u.str()
-	if src == "" {
+
+	// Source dedup: a NULL source means "same as the parent" (PUC inherits the
+	// enclosing proto's source). A genuinely absent source — a stripped
+	// top-level dump — is rendered as "=?" so shortSrc yields "?" at every
+	// observation point. Children inherit the raw (possibly empty) source.
+	src, isNull := u.strN()
+	if isNull {
 		src = parentSource
 	}
 	if src == "" {
@@ -339,8 +554,9 @@ func (u *undumpReader) function(parentSource string) *Proto {
 	} else {
 		p.Source = src
 	}
-	p.LineDefined = u.i()
-	p.LastLineDef = u.i()
+
+	p.LineDefined = u.vInt()
+	p.LastLineDef = u.vInt()
 	p.NumParams = u.u8()
 	p.IsVararg = u.u8() != 0
 	p.MaxStackSize = u.u8()
@@ -355,31 +571,23 @@ func (u *undumpReader) function(parentSource string) *Proto {
 		p.Constants[i] = u.constant()
 	}
 
-	p.Protos = make([]*Proto, u.count())
-	for i := range p.Protos {
-		p.Protos[i] = u.function(src)
-	}
-
 	p.Upvalues = make([]UpvalDesc, u.count())
 	for i := range p.Upvalues {
 		p.Upvalues[i] = UpvalDesc{
-			Name:    u.str(),
 			InStack: u.u8() != 0,
 			Index:   u.u8(),
 			Kind:    u.u8(),
 		}
 	}
 
-	if u.u8() != 0 {
-		p.LineInfo = make([]int32, u.count())
-		for i := range p.LineInfo {
-			p.LineInfo[i] = int32(u.u32())
-		}
-		p.LocVars = make([]LocVar, u.count())
-		for i := range p.LocVars {
-			p.LocVars[i] = LocVar{Name: u.str(), StartPc: u.i(), EndPc: u.i()}
-		}
+	p.Protos = make([]*Proto, u.count())
+	for i := range p.Protos {
+		// PUC inherits source from this proto (raw src, before "=?" fallback).
+		childParent := src
+		p.Protos[i] = u.function(childParent)
 	}
+
+	u.debug(p)
 
 	if u.err != nil {
 		return nil
@@ -410,17 +618,24 @@ func validateProto(p *Proto) error {
 	return nil
 }
 
-// undump reconstructs a function prototype from a binary chunk produced by
-// dumpProto. It returns an error (never panics) on any malformed input.
+// undump reconstructs a function prototype from a PUC 5.4 binary chunk. It
+// returns an error (never panics) on any malformed input.
 func undump(r io.Reader) (*Proto, error) {
 	u := &undumpReader{r: r}
 	u.checkHeader()
 	if u.err != nil {
 		return nil, u.err
 	}
+	nups := int(u.u8()) // closure nupvalues (validated against the proto below)
+	if u.err != nil {
+		return nil, u.err
+	}
 	p := u.function("")
 	if u.err != nil {
 		return nil, u.err
+	}
+	if nups != len(p.Upvalues) {
+		return nil, errBadBinaryChunk
 	}
 	return p, nil
 }

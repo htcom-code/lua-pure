@@ -1,4 +1,4 @@
-The lua54 package is a Go port of PUC-Lua 5.4 (https://www.lua.org/). Its
+The lua-pure package is a Go port of PUC-Lua 5.4.8 (https://www.lua.org/). Its
 instruction set, compiler, virtual machine, standard libraries, and semantics
 are derived from the reference Lua sources, which are distributed under the
 MIT license reproduced below. This notice is retained per that license.

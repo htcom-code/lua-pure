@@ -2,13 +2,8 @@
 
 `luapure` is a pure-Go implementation of **PUC-Lua 5.4**: its instruction set,
 single-pass compiler, virtual machine, standard libraries, and semantics are
-ported directly from the reference C sources (`lua-5.4.8/src`).
-
-The project began as a fork of [gopher-lua](https://github.com/yuin/gopher-lua)
-(a Lua 5.1 engine), but gopher-lua's 5.1 bytecode format and design hit a
-structural ceiling for 5.4 (LOADKX / 256-register `RK` / `MMBIN`, etc.), so it
-was **rewritten from scratch against the PUC 5.4 sources** into this separate
-engine. It no longer shares code with the gopher-lua 5.1 engine.
+ported directly from the reference C sources (`lua-5.4.8/src`). It is written
+from scratch against those sources and shares no code with any other engine.
 
 - Front end: single-pass recursive-descent lexer + parser fused with code
   generation (no AST), mirroring PUC's `llex.c`/`lparser.c`/`lcode.c`.
@@ -72,8 +67,11 @@ and edge cases are still matched against the PUC sources.
 - **Errors** unwind via `panic`/`recover` instead of `longjmp`.
 - **Coroutines** are goroutines handing off over channels (so a yield can cross
   a Go/"C" frame, e.g. inside a metamethod).
-- **Binary chunks** use PUC's exact header but a gopher-native body (round-trip
-  only; not `luac`-compatible).
+- **Binary chunks** use PUC-Lua 5.4's exact precompiled-chunk format (a port of
+  `ldump.c`/`lundump.c`): a dump is byte-identical to `luac 5.4.8` on a 64-bit
+  little-endian host, and luapure loads `luac` output and vice versa. (Internally
+  luapure keeps absolute line numbers; dump recompresses them to PUC's
+  `lineinfo`/`abslineinfo` and undump restores them.)
 - **Memory-limit caps** (configurable `MaxTableArraySize`, `MaxLexElement`,
   constant count): Go cannot turn an allocation failure into a catchable error
   (OOM is a fatal runtime throw), so these size checks stand in for PUC's
@@ -83,14 +81,11 @@ and edge cases are still matched against the PUC sources.
 
 luapure is a derivative work — a Go port of **PUC-Lua 5.4**. The language,
 instruction set, compiler, VM, libraries, and semantics are PUC-Rio's; this code
-translates them to Go and adds the Go-native adaptations listed above. The
-project also originated as a fork of gopher-lua. Both upstreams are MIT, as is
-this project; their copyright notices are retained.
+translates them to Go and adds the Go-native adaptations listed above. Lua is
+MIT, as is this project; its copyright notice is retained.
 
 - **Lua**: Copyright © 1994–2025 Lua.org, PUC-Rio (MIT) — https://www.lua.org/
   — full notice in [`LICENSE-Lua`](LICENSE-Lua) (the engine is ported from it).
-- **gopher-lua**: Copyright © 2015 Yusuke Inuzuka (MIT) —
-  https://github.com/yuin/gopher-lua — fork origin; see [`LICENSE`](LICENSE).
 - **luapure**: the Go port and Go-native adaptations, MIT — see [`LICENSE`](LICENSE).
 
 All three are MIT and compatible.

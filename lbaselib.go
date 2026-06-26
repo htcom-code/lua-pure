@@ -436,7 +436,7 @@ func baseLoadfile(L *LState) int {
 }
 
 // gcModeName tracks the (cosmetic) GC mode for collectgarbage's mode switches;
-// gopher delegates collection to the Go runtime, so values are placeholders.
+// luapure delegates collection to the Go runtime, so values are placeholders.
 var gcModeName = "incremental"
 
 func baseCollectgarbage(L *LState) int {
@@ -447,7 +447,7 @@ func baseCollectgarbage(L *LState) int {
 		L.Push(Float(0)) // one value: Kbytes in use
 		return 1
 	case "step":
-		// gopher delegates collection to the Go runtime; force a cycle so weak
+		// luapure delegates collection to the Go runtime; force a cycle so weak
 		// tables observe reclaimed referents and __gc finalizers run (PUC does
 		// both on a step). A forced runtime.GC() always completes a full cycle,
 		// so report true (a cycle finished), matching PUC's step return — this

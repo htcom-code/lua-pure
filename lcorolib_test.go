@@ -83,7 +83,7 @@ return ismain, inner, coroutine.isyieldable()`)
 }
 
 func TestCoroutineYieldThroughPcall(t *testing.T) {
-	// gopher's goroutine model allows yielding across a pcall boundary.
+	// luapure's goroutine model allows yielding across a pcall boundary.
 	r := runLib(t, `
 local co = coroutine.create(function()
   pcall(function()

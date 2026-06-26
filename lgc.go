@@ -9,7 +9,7 @@ import (
 //
 // PUC runs an object's __gc metamethod on the main thread when the collector
 // finds the object unreachable, passing the object itself (so it may be
-// resurrected), once only, with errors demoted to warnings. gopher delegates
+// resurrected), once only, with errors demoted to warnings. luapure delegates
 // liveness to Go's GC, whose finalizers run asynchronously on a separate
 // goroutine where touching an LState is unsafe. So a Go finalizer here only
 // enqueues the object under a mutex; the Lua main thread drains the queue and

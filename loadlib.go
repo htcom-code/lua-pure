@@ -40,7 +40,7 @@ func (L *LState) openPackage() {
 	L.Register("require", pkgRequire)
 }
 
-// pkgLoadlib implements package.loadlib. gopher cannot load shared objects, so
+// pkgLoadlib implements package.loadlib. luapure cannot load shared objects, so
 // it behaves exactly like PUC's no-LOADLIB fallback (ll_loadlib + lsys_load):
 // it always fails, returning (nil, DLMSG, "absent") — LIB_FAIL is "absent".
 func pkgLoadlib(L *LState) int {
@@ -224,7 +224,7 @@ func searcherLua(L *LState) int {
 	return 2
 }
 
-// searcherC searches package.cpath. gopher cannot load shared objects, so a
+// searcherC searches package.cpath. luapure cannot load shared objects, so a
 // located file is unsupported; otherwise it only contributes a "no file" note.
 func searcherC(L *LState) int {
 	name := L.checkString(1)

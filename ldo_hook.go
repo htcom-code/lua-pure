@@ -39,21 +39,30 @@ func (L *LState) traceexec(ci *callInfo, proto *Proto, pc int) {
 		}
 	}
 	if L.hookMask&maskLine != 0 {
-		// Fire on entry to the function (npci == 0), on a backward jump
-		// (npci <= oldpc, e.g. a loop iteration even on the same source line),
-		// or when the line changes — like PUC luaG_traceexec. npci is the
-		// instruction just fetched (pc was advanced past it). Stripped code has
-		// no line info (LineAt -1), so only the entry fire happens, with a nil
-		// line (fireHook passes nil for line < 0) — db.lua's stripped line-hook
-		// test. A non-entry synthetic line-0 instruction never fires.
+		// Fire on a backward jump (npci <= oldpc, e.g. a loop iteration even on
+		// the same source line) or when the line changes — like PUC
+		// luaG_traceexec. npci is the instruction just fetched (pc was advanced
+		// past it). Stripped code has no line info (LineAt -1), so only the entry
+		// fire happens, with a nil line (fireHook passes nil for line < 0) —
+		// db.lua's stripped line-hook test.
 		npci := pc - 1
-		line := proto.LineAt(npci)
-		stripped := len(proto.LineInfo) == 0
-		if (stripped && npci == 0) || (line > 0 && (npci <= ci.lastHkPc || line != ci.lastLine)) {
-			ci.lastLine = line
-			L.fireHook("line", line)
+		if npci == 0 && len(proto.Code) > 0 && GetOpCode(proto.Code[0]) == OP_VARARGPREP {
+			// A vararg function's leading VARARGPREP never triggers a line hook;
+			// PUC's OP_VARARGPREP handler instead sets oldpc = 1 so the *next*
+			// instruction is seen as entering a new line. (The old code leaned on
+			// VARARGPREP carrying line 0; it now carries luac-faithful line 1, so
+			// it must be skipped explicitly.)
+			ci.lastHkPc = 1
+		} else {
+			line := proto.LineAt(npci)
+			stripped := len(proto.LineInfo) == 0
+			if (stripped && (npci == 0 || npci <= ci.lastHkPc)) ||
+				(line > 0 && (npci <= ci.lastHkPc || line != ci.lastLine)) {
+				ci.lastLine = line
+				L.fireHook("line", line)
+			}
+			ci.lastHkPc = npci
 		}
-		ci.lastHkPc = npci
 	}
 }
 

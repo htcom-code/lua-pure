@@ -19,7 +19,7 @@ var liveWeakTables int32
 // PUC implements weakness in the GC mark phase: a weak table is simply not
 // traversed for the weak half (keys and/or values), so an object reachable
 // *only* through a weak table stays white and is freed, and the dangling entry
-// is then cleared. gopher-lua delegates object liveness to Go's GC, which has
+// is then cleared. luapure delegates object liveness to Go's GC, which has
 // no hook to "skip marking through this slot" — a normal pointer in the table
 // would keep the referent alive forever. So we store the weak half physically
 // as a weak.Pointer (Go 1.24): it does not retain the referent, and reads
