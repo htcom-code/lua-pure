@@ -2,6 +2,7 @@ package luapure
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 )
@@ -211,13 +212,14 @@ func searcherLua(L *LState) int {
 		L.Push(MkString(errmsg))
 		return 1
 	}
-	src, rerr := os.ReadFile(fname)
+	f, rerr := os.Open(fname)
 	if rerr != nil {
 		L.errorf("error loading module '%s' from file '%s':\n\t%s", name, fname, errReason(rerr))
 	}
-	p, cerr := CompileString(string(src), "@"+fname)
-	if cerr != nil {
-		L.errorf("error loading module '%s' from file '%s':\n\t%s", name, fname, cerr.Error())
+	defer f.Close()
+	p, errv, bad := L.loadDiskFile(f, "@"+fname, "bt")
+	if bad {
+		L.errorf("error loading module '%s' from file '%s':\n\t%s", name, fname, errv.Str())
 	}
 	L.Push(L.loadProto(p))
 	L.Push(MkString(fname))
@@ -335,6 +337,65 @@ func (L *LState) loadReader(fn Value, chunkname, mode string) (*Proto, Value, bo
 	return cp, Nil, false
 }
 
+// loadBufferSize is the disk read-block size for streaming file loads (PUC getF
+// reads BUFSIZ at a time); a file is fed to the compiler one block at a time so
+// a large source is lexed incrementally and never held in memory whole.
+const loadBufferSize = 8192
+
+// fileChunkReader returns a getF-style reader that pulls fixed-size blocks from
+// r on demand. ok=false at EOF. Each block is a fresh copy, so the single
+// scratch buffer is safe to reuse across calls.
+func fileChunkReader(r io.Reader) func() (string, bool) {
+	buf := make([]byte, loadBufferSize)
+	return func() (string, bool) {
+		for {
+			n, err := r.Read(buf)
+			if n > 0 {
+				return string(buf[:n]), true
+			}
+			if err != nil {
+				return "", false
+			}
+			// n == 0 with no error: retry (permitted by io.Reader).
+		}
+	}
+}
+
+// loadDiskFile streams a file from disk into a Proto, mirroring PUC
+// luaL_loadfilex over getF: text is compiled incrementally through a ZIO, while
+// a binary chunk (string.dump output) is read in full then deserialized (undump
+// needs the whole blob). mode follows checkmode ("b"/"t"/"bt"). A returned
+// (errv, true) reports a load-error value rather than a Proto.
+func (L *LState) loadDiskFile(r io.Reader, chunkname, mode string) (*Proto, Value, bool) {
+	readNext := fileChunkReader(r)
+	first, _ := readNext()
+	binary := isBinaryChunk(first)
+	if errv, ok := chunkMode(binary, mode); !ok {
+		return nil, errv, true
+	}
+	if binary {
+		var sb strings.Builder
+		sb.WriteString(first)
+		for {
+			piece, ok := readNext()
+			if !ok {
+				break
+			}
+			sb.WriteString(piece)
+		}
+		bp, derr := undump(strings.NewReader(sb.String()))
+		if derr != nil {
+			return nil, MkString(derr.Error()), true
+		}
+		return bp, Nil, false
+	}
+	cp, err := compileZIO(newReaderZIO(first, readNext), chunkname, len(first))
+	if err != nil {
+		return nil, MkString(err.Error()), true
+	}
+	return cp, Nil, false
+}
+
 // protectReader runs read (which may call the Lua reader) catching a raised
 // error, restoring the frame, and reporting it as the load failure value.
 func (L *LState) protectReader(read func() string) (piece string, errv Value, bad bool) {
@@ -424,13 +485,14 @@ func baseLoad(L *LState) int {
 
 func baseDofile(L *LState) int {
 	fname := L.checkString(1)
-	data, err := os.ReadFile(fname)
+	f, err := os.Open(fname)
 	if err != nil {
 		L.errorf("cannot open %s", fname)
 	}
-	p, cerr := CompileString(string(data), "@"+fname)
-	if cerr != nil {
-		L.throw(MkString(cerr.Error()))
+	defer f.Close()
+	p, errv, bad := L.loadDiskFile(f, "@"+fname, "bt")
+	if bad {
+		L.throw(errv)
 	}
 	fnv := L.loadProto(p)
 	res := L.CallValue(fnv, nil, multRet)

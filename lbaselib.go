@@ -405,26 +405,29 @@ func baseLoadfile(L *LState) int {
 	if L.NArgs() >= 1 && !L.Arg(1).IsNil() {
 		fname = L.checkString(1)
 	}
-	var data []byte
-	var err error
-	if fname == "" {
-		data, err = io.ReadAll(os.Stdin)
-	} else {
-		data, err = os.ReadFile(fname)
+	mode := "bt"
+	if L.NArgs() >= 2 && !L.Arg(2).IsNil() {
+		mode = L.checkString(2)
 	}
-	if err != nil {
-		L.Push(Nil)
-		L.Push(MkString("cannot open " + fname))
-		return 2
-	}
+	// Stream the file (or stdin) into the compiler one block at a time instead
+	// of slurping it whole (PUC luaL_loadfilex over getF).
+	var r io.Reader = os.Stdin
 	chunkname := "=stdin"
 	if fname != "" {
+		f, err := os.Open(fname)
+		if err != nil {
+			L.Push(Nil)
+			L.Push(MkString("cannot open " + fname))
+			return 2
+		}
+		defer f.Close()
+		r = f
 		chunkname = "@" + fname
 	}
-	p, cerr := CompileString(string(data), chunkname)
-	if cerr != nil {
+	p, errv, bad := L.loadDiskFile(r, chunkname, mode)
+	if bad {
 		L.Push(Nil)
-		L.Push(MkString(cerr.Error()))
+		L.Push(errv)
 		return 2
 	}
 	env := mkTable(L.globals)
