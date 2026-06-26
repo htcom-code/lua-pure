@@ -1,0 +1,11 @@
+Official Lua 5.4 test suite — vendored for the 5.4 migration (lua54-dev).
+
+Source : https://www.lua.org/tests/lua-5.4.8-tests.tar.gz
+Version: 5.4.8
+License: MIT — Copyright (C) 1994-2025 Lua.org, PUC-Rio.
+         Full notice at the end of all.lua (and in every file by reference).
+
+These files are unmodified upstream Lua test scripts, used here only as the
+conformance oracle for migrating this fork from Lua 5.1 to 5.4 semantics.
+Re-fetch / bump with:  make lua54-tests  (LUA54_TESTS_VER=5.4.x to override)
+Run against the engine:  make lua54-conformance   (or: go run ./cmd/lua54conformance)
