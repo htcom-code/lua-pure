@@ -2,6 +2,7 @@ package luapure
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"syscall"
@@ -33,19 +34,34 @@ var processStart = time.Now()
 
 // osGetfield reads an integer date-table field (getfield in loslib.c): a
 // non-integer value errors, an absent required field (def < 0) errors, and an
-// absent optional field falls back to its default.
-func osGetfield(L *LState, tb *Table, key string, def int) int {
+// absent optional field falls back to its default. delta is the offset PUC
+// removes to map the field onto a C struct tm slot (1900 for year, 1 for
+// month); we keep the full value for Go's time.Date but apply PUC's range check
+// — the value, less delta, must fit in a C int — so out-of-bound years/months
+// error exactly as the reference does.
+func osGetfield(L *LState, tb *Table, key string, def, delta int) int {
 	v := tb.rawgetStr(key)
-	if i, ok := tointegerCvt(v); ok {
-		return int(i)
+	i, ok := tointegerCvt(v)
+	if !ok {
+		if !v.IsNil() {
+			L.errorf("field '%s' is not an integer", key)
+		}
+		if def < 0 {
+			L.errorf("field '%s' missing in date table", key)
+		}
+		return def
 	}
-	if !v.IsNil() {
-		L.errorf("field '%s' is not an integer", key)
+	d := int64(delta)
+	var inRange bool
+	if i >= 0 {
+		inRange = i-d <= math.MaxInt32
+	} else {
+		inRange = int64(math.MinInt32)+d <= i
 	}
-	if def < 0 {
-		L.errorf("field '%s' missing in date table", key)
+	if !inRange {
+		L.errorf("field '%s' is out-of-bound", key)
 	}
-	return def
+	return int(i)
 }
 
 func osTime(L *LState) int {
@@ -56,9 +72,9 @@ func osTime(L *LState) int {
 	tb := L.checkTable(1)
 	// year/month/day are required (no default); the rest default as in PUC.
 	tm := time.Date(
-		osGetfield(L, tb, "year", -1), time.Month(osGetfield(L, tb, "month", -1)),
-		osGetfield(L, tb, "day", -1), osGetfield(L, tb, "hour", 12),
-		osGetfield(L, tb, "min", 0), osGetfield(L, tb, "sec", 0), 0, time.Local)
+		osGetfield(L, tb, "year", -1, 1900), time.Month(osGetfield(L, tb, "month", -1, 1)),
+		osGetfield(L, tb, "day", -1, 0), osGetfield(L, tb, "hour", 12, 0),
+		osGetfield(L, tb, "min", 0, 0), osGetfield(L, tb, "sec", 0, 0), 0, time.Local)
 	osSetallfields(tb, tm) // normalize fields back into the table
 	L.Push(Int(tm.Unix()))
 	return 1
