@@ -16,9 +16,41 @@ import (
 type luaFile struct {
 	f      *os.File
 	r      *bufio.Reader
+	w      *bufio.Writer // write buffer when setvbuf selected "full"/"line"; nil = unbuffered
+	vbuf   byte          // buffering mode: 'f' full, 'l' line, 'n'/0 none (setvbuf)
 	closed bool
 	std    bool  // a standard stream: cannot be closed
 	ferr   error // last real (non-EOF) read error, PUC's ferror(f) flag
+}
+
+// defaultBufSize is the buffer size setvbuf uses when the caller omits one
+// (PUC's BUFSIZ-equivalent default).
+const defaultBufSize = 4096
+
+// writeString writes s honouring the file's buffering mode: unbuffered files
+// write straight through, a "full" buffer accumulates until flush/overflow, and
+// a "line" buffer flushes as soon as a newline is written.
+func (lf *luaFile) writeString(s string) error {
+	if lf.w == nil {
+		_, err := lf.f.WriteString(s)
+		return err
+	}
+	if _, err := lf.w.WriteString(s); err != nil {
+		return err
+	}
+	if lf.vbuf == 'l' && strings.IndexByte(s, '\n') >= 0 {
+		return lf.w.Flush()
+	}
+	return nil
+}
+
+// flushWrite flushes any buffered output to the underlying file (a no-op for an
+// unbuffered handle).
+func (lf *luaFile) flushWrite() error {
+	if lf.w != nil {
+		return lf.w.Flush()
+	}
+	return nil
 }
 
 func (L *LState) OpenIO() {
@@ -28,8 +60,9 @@ func (L *LState) OpenIO() {
 		"write": fileWrite,
 		"lines": fileLines,
 		"close": fileClose,
-		"seek":  fileSeek,
-		"flush": fileFlush,
+		"seek":    fileSeek,
+		"flush":   fileFlush,
+		"setvbuf": fileSetvbuf,
 	})
 	fileMT := newTable()
 	fileMT.rawset(MkString("__index"), mkTable(fileMethods))
@@ -307,6 +340,9 @@ func fileClose(L *LState) int {
 
 func fileFlush(L *LState) int {
 	lf := L.toFile(1)
+	if err := lf.flushWrite(); err != nil {
+		return pushFileError(L, err)
+	}
 	lf.f.Sync()
 	L.Push(L.Arg(1))
 	return 1
@@ -332,6 +368,7 @@ func fileToString(L *LState) int {
 func fileGc(L *LState) int {
 	lf := L.checkFile(1)
 	if !lf.closed && !lf.std && lf.f != nil {
+		lf.flushWrite()
 		lf.f.Close()
 		lf.closed = true
 	}
@@ -341,13 +378,49 @@ func fileGc(L *LState) int {
 // ioFlush flushes the default output stream (liolib.c io_flush).
 func ioFlush(L *LState) int {
 	lf := L.defaultOutput()
+	if err := lf.flushWrite(); err != nil {
+		return pushFileError(L, err)
+	}
 	lf.f.Sync()
+	L.Push(True)
+	return 1
+}
+
+// fileSetvbuf backs file:setvbuf(mode [, size]) (liolib.c f_setvbuf). It selects
+// the handle's output buffering: "no" writes through immediately, "full" holds
+// output until the buffer fills or is flushed, "line" flushes on each newline.
+// Any output buffered under the previous mode is flushed first. Returns true on
+// success (luaL_fileresult).
+func fileSetvbuf(L *LState) int {
+	lf := L.toFile(1)
+	mode := L.checkString(2)
+	size := int(L.optInt(3, defaultBufSize))
+	if size <= 0 {
+		size = defaultBufSize
+	}
+	if err := lf.flushWrite(); err != nil {
+		return pushFileError(L, err)
+	}
+	switch mode {
+	case "no":
+		lf.w = nil
+		lf.vbuf = 'n'
+	case "full":
+		lf.w = bufio.NewWriterSize(lf.f, size)
+		lf.vbuf = 'f'
+	case "line":
+		lf.w = bufio.NewWriterSize(lf.f, size)
+		lf.vbuf = 'l'
+	default:
+		L.argError(2, "invalid option '"+mode+"'")
+	}
 	L.Push(True)
 	return 1
 }
 
 func fileSeek(L *LState) int {
 	lf := L.toFile(1)
+	lf.flushWrite() // C fseek flushes pending output before repositioning
 	whence := "cur"
 	if L.NArgs() >= 2 && L.Arg(2).IsString() {
 		whence = L.Arg(2).Str()
@@ -401,7 +474,7 @@ func writeTo(L *LState, lf *luaFile, first int) (n int, ok bool) {
 		if !v.IsString() && !v.IsNumber() {
 			L.argError(i, "string expected")
 		}
-		if _, err := lf.f.WriteString(tostr(v)); err != nil {
+		if err := lf.writeString(tostr(v)); err != nil {
 			pushFileError(L, err)
 			return 3, false
 		}
@@ -659,6 +732,7 @@ func doClose(L *LState, lf *luaFile) int {
 		return 2
 	}
 	if !lf.closed {
+		lf.flushWrite()
 		lf.f.Close()
 	}
 	lf.closed = true

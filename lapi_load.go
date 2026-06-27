@@ -59,6 +59,7 @@ func (L *LState) Close() {
 			continue
 		}
 		if lf, ok := v.userData().data.(*luaFile); ok && !lf.std && !lf.closed && lf.f != nil {
+			lf.flushWrite()
 			lf.f.Close()
 			lf.closed = true
 		}
