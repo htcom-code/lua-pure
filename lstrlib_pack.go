@@ -213,6 +213,9 @@ func strPack(L *LState) int {
 	fmt := []byte(L.checkString(1))
 	h := packHeader{little: nativeLittle, maxalign: 1}
 	arg := 1
+	// PUC str_pack pushes a nil to separate the arguments from its buffer, so a
+	// missing data argument reads as that nil ("got nil"), not "got no value".
+	L.push(Nil)
 	var buf []byte
 	totalsize := 0
 	i := 0
