@@ -1,6 +1,7 @@
 package luapure
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"syscall"
@@ -84,8 +85,10 @@ func osClock(L *LState) int {
 
 func osDate(L *LState) int {
 	format := "%c"
-	if L.NArgs() >= 1 && L.Arg(1).IsString() {
-		format = L.Arg(1).Str()
+	if L.NArgs() >= 1 && !L.Arg(1).IsNil() {
+		// luaL_optstring: a number coerces to its string, a non-string/number
+		// raises a type error; an absent/nil argument keeps the "%c" default.
+		format = L.checkString(1)
 	}
 	now := time.Now()
 	if L.NArgs() >= 2 {
@@ -142,13 +145,27 @@ func (L *LState) strftime(format string, t time.Time) string {
 		"I": t.Format("03"), "M": t.Format("04"), "S": t.Format("05"),
 		"p": t.Format("PM"), "A": t.Format("Monday"), "a": t.Format("Mon"),
 		"B": t.Format("January"), "b": t.Format("Jan"), "h": t.Format("Jan"),
-		"c": t.Format("Mon Jan  2 15:04:05 2006"), "x": t.Format("01/02/06"),
+		"c": t.Format("Mon Jan _2 15:04:05 2006"), "x": t.Format("01/02/06"),
 		"X": t.Format("15:04:05"), "D": t.Format("01/02/06"),
 		"F": t.Format("2006-01-02"), "T": t.Format("15:04:05"),
 		"R": t.Format("15:04"), "r": t.Format("03:04:05 PM"),
 		"z": t.Format("-0700"), "Z": t.Format("MST"), "n": "\n", "t": "\t",
 		"%": "%",
 	}
+	// Numeric specifiers with no Go reference-layout token are computed.
+	isoYear, isoWeek := t.ISOWeek()
+	wday := int(t.Weekday()) // 0=Sunday..6=Saturday
+	uday := wday             // ISO weekday 1=Monday..7=Sunday
+	if uday == 0 {
+		uday = 7
+	}
+	repl["w"] = fmt.Sprintf("%d", wday)           // weekday, Sunday=0
+	repl["u"] = fmt.Sprintf("%d", uday)           // ISO weekday, Monday=1
+	repl["j"] = fmt.Sprintf("%03d", t.YearDay())  // day of year, 001-366
+	repl["C"] = fmt.Sprintf("%02d", t.Year()/100) // century
+	repl["V"] = fmt.Sprintf("%02d", isoWeek)      // ISO 8601 week number
+	repl["G"] = fmt.Sprintf("%d", isoYear)        // ISO 8601 year
+	repl["g"] = fmt.Sprintf("%02d", isoYear%100)  // ISO 8601 year, 2-digit
 	var sb []byte
 	for i := 0; i < len(format); i++ {
 		if format[i] != '%' {
