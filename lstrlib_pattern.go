@@ -506,6 +506,7 @@ func strGsub(L *LState) int {
 		pp = 1
 	}
 	var sb strings.Builder
+	sb.Grow(len(s)) // output is ~input size for in-place substitution; avoid regrow churn
 	count := int64(0)
 	src := 0
 	// lastmatch guards against an empty match immediately after the previous
