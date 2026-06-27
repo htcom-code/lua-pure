@@ -57,6 +57,7 @@ func (L *LState) newThread() *LState {
 		errUpval:  -1,
 		co:        L.co,
 		rng:       L.rng,
+		ctx:       L.ctx, // a cancelled context stops every thread, not just the main one
 		status:    coSuspended,
 		resumeCh:  make(chan []Value),
 		yieldCh:   make(chan coMsg),

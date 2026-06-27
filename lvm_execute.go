@@ -32,6 +32,15 @@ frame:
 				if L.pollFinalizers() {
 					base = ci.base
 				}
+				// Cooperative cancellation: reuse the same gate so the per-
+				// instruction cost stays a bare counter increment. A cancelled
+				// context raises a catchable error caught by the enclosing
+				// protected call (Call/DoString/RunWith).
+				if L.ctx != nil {
+					if err := L.ctx.Err(); err != nil {
+						L.throw(MkString("execution cancelled: " + err.Error()))
+					}
+				}
 			}
 			L.errReg = -1 // operand register for name-aware type errors
 			L.errUpval = -1

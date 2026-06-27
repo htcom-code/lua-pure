@@ -1,6 +1,7 @@
 package luapure
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -41,6 +42,11 @@ type LState struct {
 	errUpval   int // upvalue index a failing GETTABUP operated on (-1 = none)
 	finGCTick  int // instructions since the last finalizer poll (finGCPoll)
 	weakGCTick int // finalizer polls since the last weak-table GC nudge
+
+	// ctx, when non-nil, cancels execution: the VM checks ctx.Err() at the
+	// finalizer-poll gate (every finGCPoll instructions) and raises a catchable
+	// error when the context is done (SetContext). Inherited by coroutines.
+	ctx context.Context
 
 	// coroutine state (per thread). Each coroutine runs in its own goroutine;
 	// resume/yield hand off cooperatively over these channels so only one is

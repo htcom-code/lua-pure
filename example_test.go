@@ -1,6 +1,7 @@
 package luapure_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -75,4 +76,41 @@ func ExampleFromValue() {
 	m := luapure.FromValue(v).(map[any]any)
 	fmt.Println(m["x"])
 	// Output: 42
+}
+
+// A sandbox state omits the dangerous libraries and the code-loading globals.
+func Example_sandbox() {
+	L := luapure.NewSandbox()
+	res, _ := L.DoString(`return load == nil, io == nil, (1 + 2)`, "=embed")
+	fmt.Println(res[0].AsBool(), res[1].AsBool(), res[2].AsInt())
+	// Output: true true 3
+}
+
+// RunWith confines a chunk to a custom _ENV: it sees only the globals you put
+// in env.
+func ExampleLState_RunWith() {
+	L := luapure.NewState()
+	env := luapure.NewTable()
+	env.SetStr("x", luapure.Int(21))
+
+	res, err := L.RunWith(env, `return x * 2`, "=embed")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(res[0].AsInt())
+	// Output: 42
+}
+
+// A cancelled context interrupts even a tight infinite loop.
+func ExampleLState_SetContext() {
+	L := luapure.NewState()
+	L.OpenLibs()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled before we run
+	L.SetContext(ctx)
+
+	_, err := L.DoString(`while true do end`, "=embed")
+	fmt.Println(err != nil)
+	// Output: true
 }
