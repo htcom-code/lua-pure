@@ -50,6 +50,12 @@ type hentry struct {
 
 // MaxTableArraySize (luaconf.go) caps table array-part growth.
 
+// minArrCap is the floor capacity for the first contiguous growth of a table's
+// array part that has no size hint (rawsetInt). It trades a little slack on
+// tables that stay tiny for one allocation instead of several on tables built
+// element by element (t[#t+1]=v).
+const minArrCap = 2
+
 func newTable() *Table { return &Table{} }
 
 // refreshWeak recomputes weakk/weakv from the table's metatable __mode and
@@ -233,6 +239,14 @@ func (t *Table) rawsetInt(k int64, val Value) {
 		return
 	}
 	if k == int64(len(t.arr))+1 && !val.IsNil() {
+		if cap(t.arr) == 0 {
+			// First contiguous append into an unsized array (the t[#t+1]=v idiom
+			// on a table with no NEWTABLE size hint). Go's append would grow the
+			// backing array 1→2→4…, reallocating on each of the first inserts;
+			// give it a small floor instead so the common small dynamically-grown
+			// table (e.g. a node's children list) takes one allocation, not three.
+			t.arr = make([]Value, 0, minArrCap)
+		}
 		t.arr = append(t.arr, val)
 		t.absorbFromHash()
 		return
