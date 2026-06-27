@@ -374,6 +374,12 @@ func strFormat(L *LState) int {
 		case 'e', 'E', 'f', 'g', 'G': // PUC string.format has no %F (not in C89)
 			f := L.checkNumber(arg)
 			L.checkFormat(form, fmtFlagsF, true)
+			// C's '%g' defaults to 6 significant digits; Go's defaults to the
+			// shortest unique form, so inject the C default when none is given
+			// ('%e'/'%f' already share C's default of 6).
+			if (verb == 'g' || verb == 'G') && !strings.Contains(form, ".") {
+				form = form[:len(form)-1] + ".6" + string(verb)
+			}
 			if s, ok := formatSpecialFloat(form, f, verb >= 'A' && verb <= 'Z'); ok {
 				sb.WriteString(s)
 				break
