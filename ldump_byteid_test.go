@@ -161,16 +161,16 @@ func TestDumpRoundTrip(t *testing.T) {
 }
 
 // TestDumpFixtures exercises the dump format on every real conformance fixture
-// in both directions: luapure can load what luac 5.4.8 produced, and a luapure
-// dump round-trips back through undump with its code and reconstructed line
-// info intact. This validates the PUC wire-format port on large, complex
-// programs (deep nesting, long line gaps, the full constant/upvalue surface).
+// in three ways: luapure can load what luac 5.4.8 produced; a luapure dump is
+// byte-for-byte identical to luac's; and a luapure dump round-trips back through
+// undump with its code and reconstructed line info intact. This validates both
+// the PUC wire-format port and the code generator on large, complex programs
+// (deep nesting, long line gaps, the full constant/upvalue surface).
 //
-// It does NOT assert byte-identity with luac here: luapure's code generator is
-// not yet instruction-for-instruction identical to luac on these programs (it
-// emits slightly fewer instructions for some), which is a code-generation
-// concern independent of the dump format. Byte-identity of the format itself is
-// proven by TestDumpByteIdenticalToLuac on the curated cases.
+// Byte-identity here is the strong end-to-end guarantee: luapure's code
+// generator emits the same instructions, constants, and compressed line info as
+// luac for every program it can compile, so the dumps match bit for bit. The
+// curated TestDumpByteIdenticalToLuac covers the same property on minimal cases.
 func TestDumpFixtures(t *testing.T) {
 	luac := luacAvailable(t)
 	files, err := filepath.Glob("_lua5.4-tests/*.lua")
@@ -183,11 +183,14 @@ func TestDumpFixtures(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// Direction 1: luapure loads luac's output.
+		// Direction 1: luapure loads luac's output, and (when luapure can also
+		// compile the source) luapure's own dump is byte-identical to luac's.
 		dir := t.TempDir()
 		outPath := filepath.Join(dir, "luac.out")
+		var luacBlob []byte
 		if _, lerr := exec.Command(luac, "-o", outPath, f).CombinedOutput(); lerr == nil {
 			if blob, rerr := os.ReadFile(outPath); rerr == nil {
+				luacBlob = blob
 				if _, uerr := undump(bytes.NewReader(blob)); uerr != nil {
 					t.Errorf("%s: undump of luac output failed: %v", f, uerr)
 				}
@@ -198,6 +201,17 @@ func TestDumpFixtures(t *testing.T) {
 		p, err := CompileString(string(src), "@"+f)
 		if err != nil {
 			continue // some fixtures need a preprocessing step luac applies; skip
+		}
+
+		// Byte-identity: an unstripped luapure dump must equal luac's output.
+		if luacBlob != nil {
+			var bid bytes.Buffer
+			if derr := dumpProto(&bid, p, false); derr != nil {
+				t.Errorf("%s: dump: %v", f, derr)
+			} else if !bytes.Equal(bid.Bytes(), luacBlob) {
+				t.Errorf("%s: dump not byte-identical to luac (ours=%d luac=%d, firstDiff=%d)",
+					f, bid.Len(), len(luacBlob), firstDiff(bid.Bytes(), luacBlob))
+			}
 		}
 		for _, strip := range []bool{false, true} {
 			var buf bytes.Buffer

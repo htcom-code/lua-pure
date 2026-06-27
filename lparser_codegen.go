@@ -63,6 +63,7 @@ type compiler struct {
 	envName string      // name of the environment upvalue ("_ENV")
 
 	strCache map[string]Value // per-chunk string-literal intern (PUC scanner table)
+	kcache   map[constKey]int // chunk-wide constant-index cache (PUC ls->h)
 }
 
 // internConst returns a canonical string-constant Value for s, shared across all

@@ -22,10 +22,13 @@ import (
 //     side table. This Proto stores one absolute line per instruction
 //     (LineInfo, 1:1 with Code), so savelineinfo/removelastlineinfo/fixline are
 //     simple append/truncate/overwrite.
-//   - Constant dedup. PUC reuses the lexer's scanner table to cache constant
-//     indices. Here a per-function Go map keyed by the typed value does the same
-//     job; because the key carries the value's tag, integers and floats never
-//     collide (so PUC's nil-as-table and float-key tricks are unnecessary).
+//   - Constant dedup. PUC reuses the lexer's scanner table — one table for the
+//     whole chunk — to cache constant indices. Here a Go map on the shared
+//     compiler state keyed by the typed value does the same job (see addk),
+//     including the cross-function staleness that lets a value used in both a
+//     parent and a child appear twice in a constant table. Because the key
+//     carries the value's tag, integers and floats never collide (so PUC's
+//     nil-as-table and float-key tricks are unnecessary).
 //   - Errors. PUC longjmps on over-limit programs; here syntaxError panics with
 //     a *CompileError that the top-level compile entry recovers.
 
@@ -215,7 +218,7 @@ type FuncState struct {
 	nactvarReg int                  // unit-test register level (used only when ls == nil)
 	lastline   int                  // source line stamped on emitted instructions
 	needclose  bool                 // function must close upvalues on return
-	kcache     map[constKey]int     // constant-dedup cache
+	kcache     map[constKey]int     // constant-dedup cache (lcode-test fallback when ls == nil; see kcacheMap)
 	kres       func(info int) Value // resolves a VCONST's compile-time value (set by codegen)
 
 	// Parser-side bookkeeping, populated by the AST walker (codegen.go).
@@ -231,7 +234,10 @@ type FuncState struct {
 // newFuncState creates a FuncState emitting into proto. lasttarget starts at 0
 // (PUC open_func), so previousInstruction reports "none" before any code exists.
 func newFuncState(proto *Proto) *FuncState {
-	return &FuncState{f: proto, kcache: map[constKey]int{}}
+	// kcache is lazily allocated by kcacheMap (and only when no shared compiler
+	// state is attached — the lcode unit-test path); normal compilation dedups
+	// through the chunk-wide cache on the compiler instead.
+	return &FuncState{f: proto}
 }
 
 // nvarstack returns the register level above the active locals — the boundary
@@ -275,10 +281,23 @@ func constKeyOf(v Value) constKey {
 
 // addk adds v to the constant table, reusing an existing slot when possible
 // (PUC addk). Returns the constant's index.
+//
+// The dedup cache is a single table shared across every function of the chunk
+// (PUC's scanner table ls->h), not per-function. A cached index may therefore
+// belong to a sibling or nested function, so we reuse it only after confirming
+// it is a live slot in THIS function holding the same value; otherwise we fall
+// through and append a fresh constant, overwriting the cache. This faithfully
+// reproduces luac, whose constant tables contain apparent duplicates of a value
+// used in both a parent and a child function — and whose higher constant
+// indices in turn force the non-K instruction forms (GETTABLE vs GETFIELD, EQ
+// vs EQK) that any byte-identical port must match.
 func (fs *FuncState) addk(v Value) int {
 	key := constKeyOf(v)
-	if idx, ok := fs.kcache[key]; ok {
-		return idx
+	cache := fs.kcacheMap()
+	if idx, ok := cache[key]; ok {
+		if idx < len(fs.f.Constants) && constKeyOf(fs.f.Constants[idx]) == key {
+			return idx
+		}
 	}
 	// PUC addk grows the constant vector with limit MAXARG_Ax; exceeding it
 	// raises "too many constants" (heavy.lua toomanyconst).
@@ -286,8 +305,24 @@ func (fs *FuncState) addk(v Value) int {
 		fs.syntaxError(fmt.Sprintf("too many constants (limit is %d)", MaxArgAx))
 	}
 	idx := fs.f.AddConstant(v)
-	fs.kcache[key] = idx
+	cache[key] = idx
 	return idx
+}
+
+// kcacheMap returns the constant-index dedup cache. In normal compilation it is
+// the chunk-wide cache on the shared compiler state (PUC ls->h); the lcode unit
+// tests run with no compiler attached and fall back to a per-FuncState map.
+func (fs *FuncState) kcacheMap() map[constKey]int {
+	if fs.ls != nil {
+		if fs.ls.kcache == nil {
+			fs.ls.kcache = map[constKey]int{}
+		}
+		return fs.ls.kcache
+	}
+	if fs.kcache == nil {
+		fs.kcache = map[constKey]int{}
+	}
+	return fs.kcache
 }
 
 func (fs *FuncState) stringK(s string) int {
@@ -1115,7 +1150,10 @@ func isSCnumber(e *expdesc) (im int, isfloat bool, ok bool) {
 	if !hasJumps(e) && fitsC(i) {
 		return Int2sC(int(i)), isfloat, true
 	}
-	return 0, false, false
+	// PUC isSCnumber writes *isfloat before the range test, so an integer-valued
+	// float that does not fit the immediate still reports isfloat — codeeq/
+	// codeorder then carry it into operand C of the EQK/EQ/LT comparison.
+	return 0, isfloat, false
 }
 
 // luaK_indexed builds the expression t[k] (PUC luaK_indexed). t must already
@@ -1327,20 +1365,23 @@ func (fs *FuncState) codebitwise(opr BinOpr, e1, e2 *expdesc, line int) {
 // (PUC codeorder).
 func (fs *FuncState) codeorder(opr BinOpr, e1, e2 *expdesc) {
 	var r1, r2 int
-	isfloat := false
 	var op OpCode
-	if im, fl, ok := isSCnumber(e2); ok {
+	// isfloat (operand C) is sticky across both probes: PUC's isSCnumber sets it
+	// for any float operand and never clears it, so a float that fails the
+	// immediate test still marks the comparison as float-typed.
+	im, isfloat, ok := isSCnumber(e2)
+	if ok {
 		r1 = fs.luaK_exp2anyreg(e1)
 		r2 = im
-		isfloat = fl
 		op = binopr2op(opr, OPR_LT, OP_LTI)
-	} else if im, fl, ok := isSCnumber(e1); ok {
+	} else if im1, fl1, ok1 := isSCnumber(e1); ok1 {
 		// (A < B) becomes (B > A); (A <= B) becomes (B >= A)
 		r1 = fs.luaK_exp2anyreg(e2)
-		r2 = im
-		isfloat = fl
+		r2 = im1
+		isfloat = isfloat || fl1
 		op = binopr2op(opr, OPR_LT, OP_GTI)
 	} else {
+		isfloat = isfloat || fl1
 		r1 = fs.luaK_exp2anyreg(e1)
 		r2 = fs.luaK_exp2anyreg(e2)
 		op = binopr2op(opr, OPR_LT, OP_LT)
@@ -1363,13 +1404,13 @@ func (fs *FuncState) codeeq(opr BinOpr, e1, e2 *expdesc) {
 	r1 := fs.luaK_exp2anyreg(e1)
 	var op OpCode
 	var r2 int
-	cf := 0
-	if im, fl, ok := isSCnumber(e2); ok {
+	// isfloat (operand C) records that the constant operand was a float, even
+	// when it is too large for the EQI immediate and falls through to EQK
+	// (PUC isSCnumber's side effect persists past its false return).
+	im, isfloat, ok := isSCnumber(e2)
+	if ok {
 		op = OP_EQI
 		r2 = im
-		if fl {
-			cf = 1
-		}
 	} else if fs.exp2RK(e2) {
 		op = OP_EQK
 		r2 = e2.info
@@ -1381,6 +1422,10 @@ func (fs *FuncState) codeeq(opr BinOpr, e1, e2 *expdesc) {
 	eq := 0
 	if opr == OPR_EQ {
 		eq = 1
+	}
+	cf := 0
+	if isfloat {
+		cf = 1
 	}
 	e1.info = fs.condjump(op, r1, r2, cf, eq)
 	e1.k = VJMP
