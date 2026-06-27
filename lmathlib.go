@@ -163,7 +163,13 @@ func mathModf(L *LState) int {
 		// integral value, including ±Inf (Go gives a NaN fractional part there)
 		fp = 0.0
 	}
-	L.Push(Float(ip))
+	// PUC pushnumint: the integral part is an integer when it fits, else a
+	// float (so ±Inf and magnitudes beyond int64 stay float).
+	if i, ok := numberToInteger(ip); ok {
+		L.Push(Int(i))
+	} else {
+		L.Push(Float(ip))
+	}
 	L.Push(Float(fp))
 	return 2
 }
