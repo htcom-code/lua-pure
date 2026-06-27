@@ -52,6 +52,13 @@ func runOne(dir, file string) (status, detail string) {
 	L := luapure.NewState()
 	L.OpenLibs()
 	L.SetGlobal("print", luapure.NewGoFunc("print", func(*luapure.LState) int { return 0 }))
+	// _port marks a non-reference/portable platform: PUC's own suite uses it to
+	// skip OS/stdio/process-specific blocks (a standalone interpreter re-exec via
+	// arg + io.popen/os.execute, time_t extremes, etc.). luapure is an embedded
+	// pure-Go VM that intentionally does not spawn processes, so those blocks are
+	// structurally inapplicable, not engine bugs — set _port to skip them, exactly
+	// as PUC does on non-Unix hosts.
+	L.SetGlobal("_port", luapure.True)
 	// big.lua yields at the top level; PUC all.lua runs it inside a coroutine
 	// and resumes until it finishes. Drive it the same way.
 	if file == "big.lua" {
@@ -94,11 +101,22 @@ func runIsolated(self, dir, file string, timeout time.Duration) (status, detail 
 		return "PANIC", firstLine(err.Error())
 	}
 	s := string(out)
-	if i := strings.IndexByte(s, '\t'); i >= 0 {
-		return s[:i], s[i+1:]
+	// The worker wraps its result in resultMarker; everything before it is the
+	// test's own stdout and is ignored.
+	idx := strings.LastIndex(s, resultMarker)
+	if idx < 0 {
+		return "PANIC", "no result marker in output: " + firstLine(s)
 	}
-	return s, ""
+	res := s[idx+len(resultMarker):]
+	if i := strings.IndexByte(res, '\t'); i >= 0 {
+		return res[:i], res[i+1:]
+	}
+	return res, ""
 }
+
+// resultMarker delimits the worker's STATUS\tDETAIL line from any stdout the
+// test itself produced.
+const resultMarker = "@@luapure-conf-result@@"
 
 func firstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
@@ -129,10 +147,12 @@ func main() {
 	}
 
 	// Single-file worker mode: run one file directly and print the result.
+	// The result is wrapped in resultMarker so a test that writes to stdout
+	// (e.g. files.lua's "test done" line) cannot be mistaken for the status.
 	if *file != "" {
 		os.Chdir(abs)
 		st, dt := runOne(abs, *file)
-		fmt.Printf("%s\t%s", st, dt)
+		fmt.Printf("\n%s%s\t%s", resultMarker, st, dt)
 		return
 	}
 
