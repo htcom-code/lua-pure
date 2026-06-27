@@ -287,7 +287,7 @@ func TestShebangFileLoadByteIdentity(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		p, errv, bad := NewState().loadDiskFile(fh, "@"+f, "bt")
+		p, errv, bad := loadDiskFile(fh, "@"+f, "bt")
 		fh.Close()
 		if bad {
 			t.Fatalf("%s: file load failed: %v", f, errv)

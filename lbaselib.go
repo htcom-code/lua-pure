@@ -430,7 +430,7 @@ func baseLoadfile(L *LState) int {
 		r = f
 		chunkname = "@" + fname
 	}
-	p, errv, bad := L.loadDiskFile(r, chunkname, mode)
+	p, errv, bad := loadDiskFile(r, chunkname, mode)
 	if bad {
 		L.Push(Nil)
 		L.Push(errv)

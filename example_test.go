@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	luapure "github.com/htcom-code/lua-pure"
@@ -113,4 +115,48 @@ func ExampleLState_SetContext() {
 	_, err := L.DoString(`while true do end`, "=embed")
 	fmt.Println(err != nil)
 	// Output: true
+}
+
+// CompileReader compiles source streamed from any io.Reader.
+func ExampleCompileReader() {
+	L := luapure.NewState()
+	L.OpenLibs()
+
+	p, err := luapure.CompileReader(strings.NewReader(`return 6 * 7`), "=embed")
+	if err != nil {
+		panic(err)
+	}
+	res, _ := L.CallProto(p, 1)
+	fmt.Println(res[0].AsInt())
+	// Output: 42
+}
+
+// DoFile loads and runs a script from disk.
+func ExampleLState_DoFile() {
+	L := luapure.NewState()
+	L.OpenLibs()
+
+	dir, _ := os.MkdirTemp("", "luapure")
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "s.lua")
+	if err := os.WriteFile(path, []byte(`return 1 + 2 + 3`), 0o644); err != nil {
+		panic(err)
+	}
+
+	res, err := L.DoFile(path)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(res[0].AsInt())
+	// Output: 6
+}
+
+// Close releases the state's resources and is idempotent.
+func ExampleLState_Close() {
+	L := luapure.NewState()
+	L.OpenLibs()
+	L.Close()
+	L.Close()
+	fmt.Println("ok")
+	// Output: ok
 }

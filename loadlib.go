@@ -217,7 +217,7 @@ func searcherLua(L *LState) int {
 		L.errorf("error loading module '%s' from file '%s':\n\t%s", name, fname, errReason(rerr))
 	}
 	defer f.Close()
-	p, errv, bad := L.loadDiskFile(f, "@"+fname, "bt")
+	p, errv, bad := loadDiskFile(f, "@"+fname, "bt")
 	if bad {
 		L.errorf("error loading module '%s' from file '%s':\n\t%s", name, fname, errv.Str())
 	}
@@ -413,7 +413,7 @@ func skipFileComment(first string, readNext func() (string, bool)) (string, func
 // a binary chunk (string.dump output) is read in full then deserialized (undump
 // needs the whole blob). mode follows checkmode ("b"/"t"/"bt"). A returned
 // (errv, true) reports a load-error value rather than a Proto.
-func (L *LState) loadDiskFile(r io.Reader, chunkname, mode string) (*Proto, Value, bool) {
+func loadDiskFile(r io.Reader, chunkname, mode string) (*Proto, Value, bool) {
 	readNext := fileChunkReader(r)
 	first, _ := readNext()
 	first, readNext = skipFileComment(first, readNext)
@@ -538,7 +538,7 @@ func baseDofile(L *LState) int {
 		L.errorf("cannot open %s", fname)
 	}
 	defer f.Close()
-	p, errv, bad := L.loadDiskFile(f, "@"+fname, "bt")
+	p, errv, bad := loadDiskFile(f, "@"+fname, "bt")
 	if bad {
 		L.throw(errv)
 	}
