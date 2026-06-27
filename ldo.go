@@ -7,6 +7,23 @@ package luapure
 // precall prepares a call to the function at stack index funcIdx with nresults
 // expected. It returns the new Lua frame to execute, or nil when the callee was
 // a native function (already run, results in place). Mirrors luaD_precall.
+// pushCI returns the call frame to use for a new call: it reuses the frame
+// linked after the current one when a prior call left it there (PUC
+// luaE_extendCI's ci->next reuse), otherwise allocates and links a fresh one.
+// The returned frame still holds stale fields — the caller resets it in full
+// (preserving only prev/next) before use.
+func (L *LState) pushCI() *callInfo {
+	cur := L.ci
+	if cur != nil && cur.next != nil {
+		return cur.next
+	}
+	ci := &callInfo{prev: cur}
+	if cur != nil {
+		cur.next = ci
+	}
+	return ci
+}
+
 func (L *LState) precall(funcIdx, nresults int) *callInfo {
 	for {
 		fn := L.stack[funcIdx]
@@ -18,12 +35,14 @@ func (L *LState) precall(funcIdx, nresults int) *callInfo {
 				nfix := int(p.NumParams)
 				fsize := int(p.MaxStackSize)
 				L.checkstack(fsize)
-				ci := &callInfo{
+				ci := L.pushCI()
+				*ci = callInfo{
 					fn:       funcIdx,
 					base:     funcIdx + 1,
 					nresults: nresults,
 					top:      funcIdx + 1 + fsize,
-					prev:     L.ci,
+					prev:     ci.prev,
+					next:     ci.next,
 				}
 				if L.pendingHookMark {
 					ci.status |= cistHook
@@ -55,13 +74,15 @@ func (L *LState) precall(funcIdx, nresults int) *callInfo {
 // function and relocated to funcIdx by poscall.
 func (L *LState) precallC(funcIdx, nresults int, cl *Closure) int {
 	L.checkstack(luaMinStack)
-	ci := &callInfo{
+	ci := L.pushCI()
+	*ci = callInfo{
 		fn:       funcIdx,
 		base:     funcIdx + 1,
 		nresults: nresults,
 		top:      L.top + luaMinStack,
 		status:   cistC,
-		prev:     L.ci,
+		prev:     ci.prev,
+		next:     ci.next,
 	}
 	if L.pendingHookMark {
 		ci.status |= cistHook

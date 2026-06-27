@@ -158,6 +158,11 @@ type callInfo struct {
 	ntransfer int
 
 	prev *callInfo
+	// next links to a deeper frame kept for reuse after it returns (PUC
+	// CallInfo.next): a call reuses prev.next instead of allocating, so steady
+	// call traffic stops churning callInfo objects. Reset every other field on
+	// reuse; never clear next.
+	next *callInfo
 }
 
 // luaError carries a Lua error value through Go's panic/recover (the longjmp
