@@ -25,12 +25,14 @@ var liveWeakTables int32
 // as a weak.Pointer (Go 1.24): it does not retain the referent, and reads
 // materialize it back, reporting a collected referent as nil.
 //
-// Scope: values are held truly weakly. Keys are kept strong even under a 'k'
-// mode (the map key identity holds a pointer we cannot make weak without
-// rebuilding the hash representation); no conformance test exercises weak-key
-// clearing of a *collectable* key (the suite's weak tables key on integers),
-// so this is a documented, test-irrelevant limitation. weakk is still tracked
-// so the mode round-trips through getmetatable.
+// Scope: weak values live in the array/hash parts as weak cells (above). Weak
+// *keys* ('k' mode) cannot ride the hash map — its key identity holds a pointer
+// that would retain the object — so a collectable key in a weak-key table is
+// stored out-of-band in Table.weakKeys, again through a weakCell (lgc_weakkey.go).
+// Reclamation has Go-GC-root precision rather than PUC's exact mark precision: a
+// key still reachable from a dead-but-unoverwritten VM register lingers until
+// that slot is reused, so a just-inserted key may briefly survive a collection.
+// It is never permanently retained, and live keys are never cleared.
 
 // weakCell is the internal payload for a weak table value slot. It keeps the
 // original value's tag plus a typed weak pointer to its GC object; alive()

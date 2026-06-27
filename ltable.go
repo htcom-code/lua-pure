@@ -17,10 +17,11 @@ import (
 // stored under the equivalent integer key (t[2.0] and t[2] are the same slot),
 // and NaN / nil keys are rejected on assignment.
 type Table struct {
-	arr  []Value          // arr[i] holds t[i+1]
-	hash map[tkey]hentry  // non-array keys
-	keys []tkey           // insertion order of hash keys, for deterministic next()
-	meta *Table           // metatable (may be nil)
+	arr      []Value         // arr[i] holds t[i+1]
+	hash     map[tkey]hentry // non-array keys
+	keys     []tkey          // insertion order of hash keys, for deterministic next()
+	weakKeys []weakKeyEntry  // collectable keys held weakly ('k' mode); see lgc_weakkey.go
+	meta     *Table          // metatable (may be nil)
 
 	// weakk/weakv cache the table's __mode (refreshed from the metatable by
 	// refreshWeak when it is set). When weakv is true, collectable values are
@@ -95,7 +96,11 @@ func (t *Table) refreshWeak() {
 			t.hash[k] = e
 		}
 	}
-	t.weakk, t.weakv = wk, wv
+	t.weakv = wv // set before key migration so wrapVal sees the final value mode
+	if wk != t.weakk {
+		t.migrateWeakKeys(wk)
+	}
+	t.weakk = wk
 }
 
 // normKey builds the map key for v. ok=false when v cannot be a key (nil or
@@ -140,6 +145,9 @@ func (t *Table) wrapVal(v Value) Value {
 
 // rawget returns t[key] without metamethods (luaH_get).
 func (t *Table) rawget(key Value) Value {
+	if t.weakk && collectableTag(key.tag) {
+		return t.weakKeyGet(key)
+	}
 	if key.IsInt() {
 		return t.rawgetInt(key.AsInt())
 	}
@@ -213,6 +221,10 @@ func (t *Table) rawgetStr(s string) Value {
 
 // rawset assigns t[key] = val without metamethods (luaH_set + finishset).
 func (t *Table) rawset(key, val Value) {
+	if t.weakk && collectableTag(key.tag) {
+		t.weakKeySet(key, val)
+		return
+	}
 	if key.IsInt() {
 		t.rawsetInt(key.AsInt(), val)
 		return
@@ -352,6 +364,11 @@ func (t *Table) length() int64 {
 // iteration; it returns the key/value following `key`, or ok=false at the end.
 // found=false means the key is not in the table (an error for the caller).
 func (t *Table) next(key Value) (nk, nv Value, ok, found bool) {
+	// A collectable key in a weak-key table lives in the weak store, not the
+	// array/hash parts; continue iteration there.
+	if t.weakk && collectableTag(key.tag) {
+		return t.weakKeyNext(key)
+	}
 	// Array part is visited first, in index order.
 	start := 0
 	if key.IsNil() {
@@ -414,5 +431,6 @@ func (t *Table) nextHashAt(idx int) (nk, nv Value, ok bool) {
 			}
 		}
 	}
-	return Nil, Nil, false
+	// Hash part exhausted: continue into the weak-key store.
+	return t.weakKeyAt(0)
 }
