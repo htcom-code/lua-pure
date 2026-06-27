@@ -315,6 +315,12 @@ func fileSeek(L *LState) int {
 		w = io.SeekStart
 	case "cur":
 		w = io.SeekCurrent
+		// The bufio.Reader has read ahead, so the OS fd sits past the logical
+		// read position by the buffered byte count; rebase a relative seek onto
+		// the logical position so seek()/seek("cur") match C stdio's ftell.
+		if lf.r != nil {
+			offset -= int64(lf.r.Buffered())
+		}
 	case "end":
 		w = io.SeekEnd
 	}
