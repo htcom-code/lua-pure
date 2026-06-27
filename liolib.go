@@ -85,9 +85,10 @@ func (L *LState) OpenIO() {
 
 	t := newTable()
 	setFuncs(t, map[string]GoFunc{
-		"write":  ioWrite,
-		"read":   ioRead,
-		"open":   ioOpen,
+		"write":   ioWrite,
+		"read":    ioRead,
+		"open":    ioOpen,
+		"tmpfile": ioTmpfile,
 		"lines":  ioLines,
 		"close":  ioClose,
 		"type":   ioType,
@@ -220,6 +221,21 @@ func ioWrite(L *LState) int {
 
 func ioRead(L *LState) int {
 	return readFrom(L, L.defaultInput(), 1)
+}
+
+// ioTmpfile implements io.tmpfile (liolib.c io_tmpfile / C tmpfile): an
+// anonymous read/write file removed automatically. We create a temp file and
+// unlink it immediately — on Unix the open fd keeps it alive until close, after
+// which the OS reclaims it, matching tmpfile()'s "removed when closed" contract.
+func ioTmpfile(L *LState) int {
+	f, err := os.CreateTemp("", "luapure")
+	if err != nil {
+		return pushFileError(L, err)
+	}
+	os.Remove(f.Name())
+	mt := L.registry.rawgetStr("_IO_FILE_MT").tablev()
+	L.Push(L.newFile(f, mt))
+	return 1
 }
 
 func ioOpen(L *LState) int {
