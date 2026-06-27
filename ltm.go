@@ -276,6 +276,11 @@ func (L *LState) callorderTM(p1, p2 Value, event TMS) bool {
 	if L.callbinTM(p1, p2, res, event) {
 		return !L.stack[res].IsFalsy()
 	}
+	// LUA_COMPAT_LT_LE (default-on in stock 5.4's luaconf.h): with no '__le',
+	// emulate 'p1 <= p2' as '!(p2 < p1)' through '__lt'.
+	if event == tmLe && L.callbinTM(p2, p1, res, tmLt) {
+		return L.stack[res].IsFalsy()
+	}
 	L.orderError(p1, p2)
 	return false
 }
