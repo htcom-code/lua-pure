@@ -436,8 +436,11 @@ func baseLoadfile(L *LState) int {
 		L.Push(errv)
 		return 2
 	}
+	// A present env arg is used as-is — even nil — so loadfile(f, mode, nil)
+	// sets _ENV to nil (luaB_loadfile keys on lua_isnone, not nil); an absent
+	// one defaults to the globals. Mirrors baseLoad.
 	env := mkTable(L.globals)
-	if L.NArgs() >= 3 && !L.Arg(3).IsNil() {
+	if L.NArgs() >= 3 {
 		env = L.Arg(3)
 	}
 	L.Push(L.loadProtoEnv(p, env))

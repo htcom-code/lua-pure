@@ -398,7 +398,13 @@ func skipFileComment(first string, readNext func() (string, bool)) (string, func
 		}
 		buf = piece
 	}
-	// PUC keeps a newline in place of the dropped line so line numbers are intact.
+	// PUC keeps a newline in place of the dropped line so text line numbers stay
+	// intact, but drops it for a binary chunk (lf.n = 0 in luaL_loadfilex) so the
+	// signature byte remains first and the chunk is recognized as binary.
+	fill(1)
+	if len(buf) > 0 && buf[0] == luaSignature[0] {
+		return buf, readNext
+	}
 	return "\n" + buf, readNext
 }
 
