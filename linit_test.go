@@ -36,11 +36,15 @@ return ok, ok2, v`)
 }
 
 func TestBaseAssertAndError(t *testing.T) {
+	// PUC assert tail-calls error(): a string message gets the caller's
+	// position prepended (level 1), so it reads "test:LINE: custom".
 	r := runLib(t, `
 local ok, msg = pcall(function() assert(false, "custom") end)
-return ok, msg`)
+local hasPos = msg:match("^test:%d+: custom$") ~= nil
+return ok, hasPos, (msg:gsub("^.-:%d+: ", ""))`)
 	wantBool(t, r[0], false)
-	wantStr(t, r[1], "custom")
+	wantBool(t, r[1], true)
+	wantStr(t, r[2], "custom")
 }
 
 func TestIpairsPairsSelect(t *testing.T) {

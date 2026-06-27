@@ -296,7 +296,13 @@ func baseGetmetatable(L *LState) int {
 func baseAssert(L *LState) int {
 	if L.checkAny(1).IsFalsy() {
 		if L.NArgs() >= 2 {
-			L.throw(L.Arg(2))
+			// PUC assert tail-calls error(): a string message gets the caller's
+			// position prepended (level 1), a non-string message passes through.
+			msg := L.Arg(2)
+			if msg.IsString() {
+				msg = MkString(L.where(1) + msg.Str())
+			}
+			L.throw(msg)
 		}
 		L.errorf("assertion failed!")
 	}
