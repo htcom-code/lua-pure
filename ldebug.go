@@ -59,9 +59,15 @@ func basicGetObjName(p *Proto, pc, reg int) (kind, name string, setpc int) {
 	case OP_GETUPVAL:
 		return "upvalue", upvalName(p, GetArgB(i)), sp
 	case OP_LOADK:
-		return "constant", knameStr(p, GetArgBx(i)), sp
+		// PUC getobjname names a constant only when it is a string; a numeric
+		// constant operand contributes no varinfo (no "(constant '?')").
+		if idx := GetArgBx(i); idx >= 0 && idx < len(p.Constants) && p.Constants[idx].IsString() {
+			return "constant", p.Constants[idx].Str(), sp
+		}
 	case OP_LOADKX:
-		return "constant", knameStr(p, GetArgAx(p.Code[sp+1])), sp
+		if idx := GetArgAx(p.Code[sp+1]); idx >= 0 && idx < len(p.Constants) && p.Constants[idx].IsString() {
+			return "constant", p.Constants[idx].Str(), sp
+		}
 	}
 	return "", "", sp
 }

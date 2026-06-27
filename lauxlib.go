@@ -236,8 +236,15 @@ func (L *LState) tostring(v Value) string {
 	if mt := L.metatableOf(v); mt != nil {
 		if f := mt.rawgetStr("__tostring"); !f.IsNil() {
 			res := L.CallValue(f, []Value{v}, 1)
-			if len(res) > 0 && res[0].IsString() {
-				return res[0].Str()
+			// luaL_tolstring accepts whatever lua_isstring accepts: a string or
+			// a number (coerced to its decimal); anything else is an error.
+			if len(res) > 0 {
+				if res[0].IsString() {
+					return res[0].Str()
+				}
+				if res[0].IsNumber() {
+					return numToString(res[0])
+				}
 			}
 			L.errorf("'__tostring' must return a string")
 		}
