@@ -497,8 +497,7 @@ func dbgGetupvalue(L *LState) int {
 	n := int(L.checkInt(2))
 	name, v, ok := upvalAt(cl, n)
 	if !ok {
-		L.Push(Nil)
-		return 1
+		return 0 // PUC db_getupvalue returns no values for an out-of-range index
 	}
 	L.Push(MkString(name))
 	L.Push(v)
@@ -509,18 +508,17 @@ func dbgSetupvalue(L *LState) int {
 	cl := L.checkFunc(1)
 	n := int(L.checkInt(2))
 	v := L.checkAny(3)
+	// PUC db_setupvalue returns no values for an out-of-range index.
 	if cl.isLua() {
 		if n < 1 || n > len(cl.upvals) {
-			L.Push(Nil)
-			return 1
+			return 0
 		}
 		cl.upvals[n-1].set(v)
 		L.Push(MkString(upvalDisplayName(cl.proto.Upvalues[n-1].Name)))
 		return 1
 	}
 	if n < 1 || n > len(cl.goUpvals) {
-		L.Push(Nil)
-		return 1
+		return 0
 	}
 	cl.goUpvals[n-1] = v
 	L.Push(MkString(""))
