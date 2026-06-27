@@ -261,3 +261,44 @@ func firstDiff(a, b []byte) int {
 	}
 	return -1
 }
+
+// TestShebangFileLoadByteIdentity covers the fixtures TestDumpFixtures cannot:
+// all.lua and main.lua begin with a Unix shebang ("#!..."), which the string
+// compile path rightly rejects but the file loader must strip (PUC skipcomment).
+// Loading them through loadDiskFile — the loadfile/dofile path — must produce a
+// chunk byte-identical to luac's, proving the shebang line is dropped and the
+// surviving line numbers are preserved.
+func TestShebangFileLoadByteIdentity(t *testing.T) {
+	luac := luacAvailable(t)
+	for _, f := range []string{"_lua5.4-tests/all.lua", "_lua5.4-tests/main.lua"} {
+		if _, err := os.Stat(f); err != nil {
+			continue
+		}
+		dir := t.TempDir()
+		outPath := filepath.Join(dir, "luac.out")
+		if out, lerr := exec.Command(luac, "-o", outPath, f).CombinedOutput(); lerr != nil {
+			t.Fatalf("%s: luac failed: %v\n%s", f, lerr, out)
+		}
+		want, err := os.ReadFile(outPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fh, err := os.Open(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, errv, bad := NewState().loadDiskFile(fh, "@"+f, "bt")
+		fh.Close()
+		if bad {
+			t.Fatalf("%s: file load failed: %v", f, errv)
+		}
+		var got bytes.Buffer
+		if derr := dumpProto(&got, p, false); derr != nil {
+			t.Fatalf("%s: dump: %v", f, derr)
+		}
+		if !bytes.Equal(got.Bytes(), want) {
+			t.Errorf("%s: dump not byte-identical to luac (ours=%d luac=%d, firstDiff=%d)",
+				f, got.Len(), len(want), firstDiff(got.Bytes(), want))
+		}
+	}
+}

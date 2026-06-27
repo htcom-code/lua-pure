@@ -361,6 +361,51 @@ func fileChunkReader(r io.Reader) func() (string, bool) {
 	}
 }
 
+// utf8BOM is the UTF-8 byte-order mark PUC's skipBOM strips before lexing.
+const utf8BOM = "\xEF\xBB\xBF"
+
+// skipFileComment mirrors PUC luaL_loadfilex's skipBOM + skipcomment: it strips a
+// leading UTF-8 BOM and, when the file then begins with '#', the entire first
+// line (a Unix shebang, e.g. "#!/usr/bin/lua"), replacing that line with a single
+// newline so every later line keeps its original number. It returns the processed
+// leading text plus a reader for the remainder. Binary chunks — which never begin
+// with a BOM or '#' — pass through untouched, so the caller's signature check
+// still sees the real first byte. Stripping happens only on the file path, not in
+// load()/the lexer, exactly as in PUC.
+func skipFileComment(first string, readNext func() (string, bool)) (string, func() (string, bool)) {
+	buf := first
+	fill := func(min int) {
+		for len(buf) < min {
+			piece, ok := readNext()
+			if !ok {
+				break
+			}
+			buf += piece
+		}
+	}
+	fill(len(utf8BOM))
+	buf = strings.TrimPrefix(buf, utf8BOM)
+	fill(1)
+	if len(buf) == 0 || buf[0] != '#' {
+		return buf, readNext
+	}
+	// Skip the shebang line, up to and including its newline (or EOF).
+	for {
+		if i := strings.IndexByte(buf, '\n'); i >= 0 {
+			buf = buf[i+1:]
+			break
+		}
+		piece, ok := readNext()
+		if !ok {
+			buf = "" // whole file was the comment line
+			break
+		}
+		buf = piece
+	}
+	// PUC keeps a newline in place of the dropped line so line numbers are intact.
+	return "\n" + buf, readNext
+}
+
 // loadDiskFile streams a file from disk into a Proto, mirroring PUC
 // luaL_loadfilex over getF: text is compiled incrementally through a ZIO, while
 // a binary chunk (string.dump output) is read in full then deserialized (undump
@@ -369,6 +414,7 @@ func fileChunkReader(r io.Reader) func() (string, bool) {
 func (L *LState) loadDiskFile(r io.Reader, chunkname, mode string) (*Proto, Value, bool) {
 	readNext := fileChunkReader(r)
 	first, _ := readNext()
+	first, readNext = skipFileComment(first, readNext)
 	binary := isBinaryChunk(first)
 	if errv, ok := chunkMode(binary, mode); !ok {
 		return nil, errv, true
