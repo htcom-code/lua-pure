@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"runtime"
 	"strings"
 )
 
@@ -456,7 +457,12 @@ func baseCollectgarbage(L *LState) int {
 		"count", "step", "setpause", "setstepmul", "isrunning", "generational", "incremental"})
 	switch opt {
 	case "count":
-		L.Push(Float(0)) // one value: Kbytes in use
+		// Report the Go heap in use as Kbytes (PUC count). luapure has no heap of
+		// its own — collection is the Go runtime's — so this is an approximation
+		// from runtime.MemStats, useful for embedders monitoring memory.
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		L.Push(Float(float64(m.HeapAlloc) / 1024))
 		return 1
 	case "step":
 		// luapure delegates collection to the Go runtime; force a cycle so weak
@@ -468,7 +474,7 @@ func baseCollectgarbage(L *LState) int {
 		L.Push(True)
 		return 1
 	case "isrunning":
-		L.Push(True)
+		L.Push(Bool(!L.co.gcStopped))
 		return 1
 	case "setpause", "setstepmul":
 		L.Push(Int(0)) // previous value
@@ -479,10 +485,15 @@ func baseCollectgarbage(L *LState) int {
 		L.Push(MkString(prev))
 		return 1
 	default: // stop, restart, collect
-		if opt == "collect" {
+		switch opt {
+		case "collect":
 			// Force a full Go GC cycle so weak tables drop reclaimed referents
 			// and __gc finalizers run, the way collectgarbage() does in PUC.
 			L.finalizeAll()
+		case "stop":
+			L.co.gcStopped = true // tracked for isrunning; Go GC keeps running
+		case "restart":
+			L.co.gcStopped = false
 		}
 		L.Push(Int(0))
 		return 1

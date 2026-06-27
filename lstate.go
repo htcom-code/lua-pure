@@ -105,6 +105,12 @@ type coState struct {
 	finMu      sync.Mutex
 	finQueue   []Value
 	finPending int32 // queued, not yet drained
+
+	// gcStopped tracks collectgarbage("stop"/"restart") for isrunning. It is
+	// cosmetic: luapure delegates collection to the Go runtime and does not
+	// actually pause it (doing so would mean a process-global SetGCPercent(-1),
+	// a sandbox hazard), but isrunning stays consistent with the requested state.
+	gcStopped bool
 }
 
 // Coroutine statuses (lua.h LUA_YIELD etc. / coroutine.status strings).
