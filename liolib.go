@@ -173,7 +173,11 @@ func ioOutput(L *LState) int { return ioStream(L, "_IO_OUTPUT", "w") }
 // --- io.* wrappers over the default streams ---
 
 func ioWrite(L *LState) int {
-	return writeTo(L, L.defaultOutput(), 1)
+	if writeTo(L, L.defaultOutput(), 1) == 0 {
+		return 0
+	}
+	L.Push(L.registry.rawgetStr("_IO_OUTPUT")) // return the file for chaining
+	return 1
 }
 
 func ioRead(L *LState) int {
