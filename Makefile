@@ -1,4 +1,7 @@
-.PHONY: build vet test conformance-ext conformance check
+.PHONY: build vet test conformance-ext conformance check doc doc-web
+
+# Port for the local pkgsite docs server (override: make doc-web DOC_PORT=8080).
+DOC_PORT ?= 6060
 
 # Compile everything.
 build:
@@ -25,3 +28,13 @@ conformance:
 # The full gate: build, vet, every Go test (conformance-ext included), and the
 # conformance driver. Run this before pushing.
 check: build vet test conformance
+
+# Print the package's exported API documentation as text.
+doc:
+	go doc -all .
+
+# Serve browsable HTML docs locally with pkgsite (the pkg.go.dev engine),
+# fetched on demand via `go run`. The embedding API examples render here.
+doc-web:
+	@echo "Docs: http://localhost:$(DOC_PORT)/github.com/htcom-code/lua-pure  (Ctrl-C to stop)"
+	go run golang.org/x/pkgsite/cmd/pkgsite@latest -http=localhost:$(DOC_PORT) -open .
