@@ -35,6 +35,15 @@ type LState struct {
 	hookCdown       int   // instructions remaining until the next count hook
 	allowHook       bool  // false while inside a hook (no re-entry)
 	pendingHookMark bool  // tag the next frame created as the hook frame (CIST_HOOK)
+
+	// Go-native debug hook (SetGoHook), independent of the Lua debug.sethook
+	// hook above: a debugger installs a Go callback rather than a Lua closure.
+	// Fired from the same points as the Lua hook, gated on its own mask/count,
+	// and runs inline on the executing goroutine (no extra Lua frame).
+	goHook      GoHook
+	goHookMask  int
+	goHookCount int
+	goHookCdown int
 	pendingFinMark  bool  // tag the next frame created as a __gc finalizer (CIST_FIN)
 
 	nCcalls    int // nested Go-level call depth (LUAI_MAXCCALLS guard)

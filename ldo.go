@@ -70,7 +70,7 @@ func (L *LState) precall(funcIdx, nresults int) *callInfo {
 					L.stack[L.top] = Nil
 					L.top++
 				}
-				if L.hookMask != 0 {
+				if L.hookMask|L.goHookMask != 0 {
 					L.fireCallHook(ci, false)
 				}
 				return ci
@@ -102,10 +102,17 @@ func (L *LState) precallC(funcIdx, nresults int, cl *Closure) int {
 	// fires from poscall), so a debug hook sees C-function entry/exit. A C call
 	// hook reports all arguments as the transfer (PUC ccall: ftransfer=1,
 	// ntransfer=narg) for getinfo "r".
-	if L.hookMask&maskCall != 0 {
+	wantLuaCall := L.hookMask&maskCall != 0 && !L.hook.IsNil()
+	wantGoCall := L.goHook != nil && L.goHookMask&maskCall != 0
+	if wantLuaCall || wantGoCall {
 		ci.ftransfer = 1
 		ci.ntransfer = L.top - funcIdx - 1
-		L.fireHook("call", -1)
+		if wantLuaCall {
+			L.fireHook("call", -1)
+		}
+		if wantGoCall {
+			L.fireGoHook(HookCall, -1)
+		}
 	}
 	n := cl.gofn(L)
 	L.poscall(ci, n)
@@ -131,7 +138,7 @@ func (L *LState) tryCallTM(funcIdx int) int {
 // poscall finishes a call: moves nres results to the frame's func slot per the
 // expected count and pops back to the caller (luaD_poscall).
 func (L *LState) poscall(ci *callInfo, nres int) {
-	if L.hookMask&maskRet != 0 {
+	if L.hookMask&maskRet != 0 || L.goHookMask&maskRet != 0 {
 		L.fireReturnHook(ci, nres)
 	}
 	L.moveresults(ci.fn, nres, ci.nresults)
@@ -202,7 +209,7 @@ func (L *LState) pretailcall(ci *callInfo, funcIdx, narg1, delta int) int {
 				ci.nextra = 0
 				ci.status |= cistTail
 				L.top = funcIdx + narg1
-				if L.hookMask != 0 {
+				if L.hookMask|L.goHookMask != 0 {
 					L.fireCallHook(ci, true)
 				}
 				return -1

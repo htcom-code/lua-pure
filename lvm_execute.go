@@ -18,7 +18,7 @@ frame:
 			i := code[pc]
 			pc++
 			ci.savedpc = pc // keep savedpc current for errors / metamethod calls
-			if L.hookMask != 0 {
+			if L.hookMask|L.goHookMask != 0 {
 				L.traceexec(ci, proto, pc)
 				base = ci.base
 			}
