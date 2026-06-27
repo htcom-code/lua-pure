@@ -218,7 +218,13 @@ func coWrap(L *LState) int {
 		}
 		vals, err := L.resume(co, args)
 		if err != nil {
-			L.throw(err.value)
+			// luaB_auxwrap: prepend the caller's position to a string error
+			// before re-raising; a non-string error object propagates unchanged.
+			ev := err.value
+			if ev.IsString() {
+				ev = MkString(L.where(1) + ev.Str())
+			}
+			L.throw(ev)
 		}
 		for _, v := range vals {
 			L.Push(v)
