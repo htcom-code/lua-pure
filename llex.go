@@ -139,14 +139,7 @@ func hexavalue(c int) int {
 
 func (ls *lexState) next() { ls.current = ls.z.getc() }
 
-// MaxLexElement, when > 0, caps the length of a single lexical element (an
-// identifier, string, or number token). PUC's save raises "lexical element too
-// long" when the token buffer would grow past MAX_SIZE; on a 64-bit build that
-// is effectively unreachable, so an unbounded token (heavy.lua's hugeid, a
-// reader feeding one endless identifier) OOMs the host instead. This
-// configurable ceiling raises the catchable error first. 0 (the default) keeps
-// the unbounded behavior.
-var MaxLexElement int
+// MaxLexElement (luaconf.go) caps the length of a single lexical element.
 
 func (ls *lexState) save(c int) {
 	if MaxLexElement > 0 && len(ls.buff) >= MaxLexElement {

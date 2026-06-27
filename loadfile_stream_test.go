@@ -18,7 +18,7 @@ func writeTemp(t *testing.T, name, content string) string {
 	return p
 }
 
-// TestLoadfileStreamsLargeFile loads a source far larger than loadBufferSize so
+// TestLoadfileStreamsLargeFile loads a source far larger than LoadBufferSize so
 // the compiler must pull many blocks across fill boundaries; a correct result
 // proves the streaming reader reassembles tokens that straddle block edges.
 func TestLoadfileStreamsLargeFile(t *testing.T) {
@@ -30,7 +30,7 @@ func TestLoadfileStreamsLargeFile(t *testing.T) {
 	}
 	sb.WriteString("return s\n")
 	src := sb.String()
-	if len(src) <= loadBufferSize*2 {
+	if len(src) <= LoadBufferSize*2 {
 		t.Fatalf("source too small (%d bytes) to exercise multi-block streaming", len(src))
 	}
 	path := writeTemp(t, "big.lua", src)

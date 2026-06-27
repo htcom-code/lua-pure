@@ -9,8 +9,9 @@ import "strings"
 const (
 	capUnfinished = -1
 	capPosition   = -2
-	maxCaptures   = 32
 	maxMatchDepth = 200
+	// maxCaptures (PUC LUA_MAXCAPTURES) is in luaconf.go; it sizes the fixed
+	// capture array below.
 )
 
 type capture struct {

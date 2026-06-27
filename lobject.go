@@ -60,9 +60,8 @@ type luaString struct {
 	s string
 }
 
-// maxShortLen is PUC LUAI_MAXSHORTLEN: strings up to this length are treated as
-// "short" (interned for identity, e.g. "%p"); longer strings are not.
-const maxShortLen = 40
+// maxShortLen (PUC LUAI_MAXSHORTLEN, the short/long string boundary) is defined
+// in luaconf.go.
 
 // --- constructors ---
 

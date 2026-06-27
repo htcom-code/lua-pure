@@ -337,16 +337,12 @@ func (L *LState) loadReader(fn Value, chunkname, mode string) (*Proto, Value, bo
 	return cp, Nil, false
 }
 
-// loadBufferSize is the disk read-block size for streaming file loads (PUC getF
-// reads BUFSIZ at a time); a file is fed to the compiler one block at a time so
-// a large source is lexed incrementally and never held in memory whole.
-const loadBufferSize = 8192
-
 // fileChunkReader returns a getF-style reader that pulls fixed-size blocks from
 // r on demand. ok=false at EOF. Each block is a fresh copy, so the single
-// scratch buffer is safe to reuse across calls.
+// scratch buffer is safe to reuse across calls. LoadBufferSize (luaconf.go) is
+// the disk read-block size.
 func fileChunkReader(r io.Reader) func() (string, bool) {
-	buf := make([]byte, loadBufferSize)
+	buf := make([]byte, LoadBufferSize)
 	return func() (string, bool) {
 		for {
 			n, err := r.Read(buf)

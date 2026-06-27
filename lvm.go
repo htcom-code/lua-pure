@@ -10,13 +10,13 @@ import (
 // Stack slots are addressed by absolute index; the C "goto startfunc/returning"
 // control flow is modelled by an outer frame loop with labelled continue.
 
-const maxTagLoop = 2000 // limit for __index/__newindex chains (lvm.c MAXTAGLOOP)
+// MaxTagLoop (luaconf.go) limits __index/__newindex chains (lvm.c MAXTAGLOOP).
 
 // --- table access (luaV_finishget / luaV_finishset, fast paths folded in) ---
 
 // gettable performs val = t[key] with __index handling, storing into stack[ra].
 func (L *LState) gettable(t, key Value, ra int) {
-	for loop := 0; loop < maxTagLoop; loop++ {
+	for loop := 0; loop < MaxTagLoop; loop++ {
 		var tm Value
 		if t.IsTable() {
 			tbl := t.tablev()
@@ -52,7 +52,7 @@ func (L *LState) gettable(t, key Value, ra int) {
 // (PUC lua_gettable). Used by library code that needs the result as a value
 // rather than written into a register, e.g. table-replacement gsub.
 func (L *LState) indexGet(t, key Value) Value {
-	for loop := 0; loop < maxTagLoop; loop++ {
+	for loop := 0; loop < MaxTagLoop; loop++ {
 		var tm Value
 		if t.IsTable() {
 			tbl := t.tablev()
@@ -87,7 +87,7 @@ func (L *LState) indexGet(t, key Value) Value {
 
 // settable performs t[key] = val with __newindex handling.
 func (L *LState) settable(t, key, val Value) {
-	for loop := 0; loop < maxTagLoop; loop++ {
+	for loop := 0; loop < MaxTagLoop; loop++ {
 		var tm Value
 		if t.IsTable() {
 			tbl := t.tablev()

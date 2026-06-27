@@ -36,17 +36,11 @@ import (
 // absolute address and as a self-link.
 const noJump = -1
 
-// maxRegisters is the per-function register ceiling (PUC MAXREGS); it must fit
-// in 8 bits.
-const maxRegisters = 255
+// maxRegisters (PUC MAXREGS, the per-function register ceiling) is in luaconf.go.
 
 // maxIndexRK is the largest constant index usable as an inline K operand
 // (PUC MAXINDEXRK == MAXARG_B).
 const maxIndexRK = MaxArgB
-
-// maxShortStr is the byte length under which a string constant is "short"
-// (PUC LUAI_MAXSHORTLEN); only short strings can key GETFIELD/SETFIELD.
-const maxShortStr = 40
 
 // CompileError is raised when a program exceeds a hard compiler limit (too many
 // registers, control structure too long, …). The top-level compile recovers it.
@@ -1118,7 +1112,7 @@ func (fs *FuncState) isKstr(e *expdesc) bool {
 		return false
 	}
 	v := fs.f.Constants[e.info]
-	return v.IsString() && len(v.Str()) <= maxShortStr
+	return v.IsString() && len(v.Str()) <= maxShortLen
 }
 
 // isKint reports whether e is a literal integer (PUC isKint).

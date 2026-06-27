@@ -10,11 +10,7 @@ import "fmt"
 // that calls the lcode machinery in lcode.go. The control flow mirrors
 // lparser.c function-for-function so it can be checked against the original.
 
-// MaxVars is the per-function local-variable limit (PUC MAXVARS).
-const maxVars = 200
-
-// maxUpvalues is the per-function upvalue limit (PUC MAXUPVAL).
-const maxUpvalues = 255
+// maxVars (PUC MAXVARS) and maxUpvalues (PUC MAXUPVAL) are defined in luaconf.go.
 
 // hasMultRet reports whether an expression can yield a variable number of
 // results (PUC hasmultret).

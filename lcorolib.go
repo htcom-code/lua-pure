@@ -150,7 +150,7 @@ func coResume(L *LState) int {
 	// The results move onto the resumer's stack; if they would overflow it,
 	// report it as a value rather than raising (PUC luaB_coresume checks
 	// lua_checkstack(nres+1) and returns false + this message).
-	if L.top+len(vals)+1 > maxLuaStack {
+	if L.top+len(vals)+1 > MaxStack {
 		L.Push(False)
 		L.Push(MkString("too many results to resume"))
 		return 2

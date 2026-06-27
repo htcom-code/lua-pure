@@ -101,7 +101,7 @@ func tblUnpack(L *LState) int {
 	// Reject ranges that won't fit on the stack (ltablib.c: lua_checkstack for
 	// the result count fails). n is count-1, computed unsigned to avoid overflow.
 	n := uint64(j) - uint64(i)
-	if n >= uint64(maxLuaStack) || L.top+int(n)+1 > maxLuaStack {
+	if n >= uint64(MaxStack) || L.top+int(n)+1 > MaxStack {
 		L.errorf("too many results to unpack") // lua_checkstack(n+1) would fail
 	}
 	// Pre-grow once so the per-push checkstack never raises "stack overflow"

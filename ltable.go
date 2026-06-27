@@ -48,14 +48,7 @@ type hentry struct {
 	val Value
 }
 
-// MaxTableArraySize, when > 0, caps how far a table's array part may grow before
-// extending it raises a catchable "not enough memory" error. Go cannot turn a
-// real allocation failure into a recoverable error (OOM is a fatal runtime
-// throw), so a program that fills a table without bound (Lua's heavy.lua
-// toomanyidx: `for i=1,math.huge do a[i]=i end`) would crash the host process
-// instead of erroring. This configurable ceiling stands in for PUC's
-// malloc-failure path. 0 (the default) preserves unlimited growth.
-var MaxTableArraySize int
+// MaxTableArraySize (luaconf.go) caps table array-part growth.
 
 func newTable() *Table { return &Table{} }
 

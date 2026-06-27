@@ -200,15 +200,8 @@ func (L *LState) Globals() *Table { return L.globals }
 
 // checkstack ensures at least n free slots above top (luaD_checkstack), growing
 // the backing array if needed. Indices into the stack stay valid across growth.
-// maxLuaStack bounds the value stack (PUC LUAI_MAXSTACK), so unbounded
-// recursion raises "stack overflow" instead of exhausting memory.
-const maxLuaStack = 1000000 // PUC LUAI_MAXSTACK
-
-// errorStackReserve is slack above maxLuaStack (PUC ERRORSTACKSIZE) kept free so
-// that, after a "stack overflow" is raised, the message handler and any
-// to-be-closed variables still have room to run.
-const errorStackReserve = 200
-
+// MaxStack (luaconf.go) bounds the value stack, so unbounded recursion raises
+// "stack overflow" instead of exhausting memory.
 func (L *LState) checkstack(n int) {
 	// The hard limit applies to the logical slots requested (L.top + n), like
 	// PUC luaD_growstack which compares the requested size to LUAI_MAXSTACK;
@@ -221,16 +214,16 @@ func (L *LState) checkstack(n int) {
 	// room (PUC luaD_growstack).
 	if L.inErrfunc {
 		// Overflowing even the reserve: PUC raises LUA_ERRERR.
-		if need > maxLuaStack+errorStackReserve {
+		if need > MaxStack+ErrorStackReserve {
 			L.runtimeError("error in error handling")
 		}
-	} else if need > maxLuaStack {
+	} else if need > MaxStack {
 		L.runtimeError("stack overflow")
 	}
 	if alloc := need + extraStack; alloc > len(L.stack) {
 		want := growSize(len(L.stack), alloc)
-		if want > maxLuaStack+errorStackReserve {
-			want = maxLuaStack + errorStackReserve
+		if want > MaxStack+ErrorStackReserve {
+			want = MaxStack + ErrorStackReserve
 		}
 		ns := make([]Value, want)
 		copy(ns, L.stack)
@@ -311,7 +304,7 @@ func (ci *callInfo) isLuaFrame() bool { return ci != nil && ci.status&cistC == 0
 // literal, "@file" the file name (truncated from the front with "..."), and any
 // other source is shown as [string "first line..."], truncated to LUA_IDSIZE.
 func shortSrc(source string) string {
-	const idSize = 60 // LUA_IDSIZE
+	idSize := IDSize // LUA_IDSIZE (luaconf.go)
 	if source != "" && source[0] == '=' { // literal
 		if len(source) <= idSize {
 			return source[1:]

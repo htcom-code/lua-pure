@@ -24,7 +24,7 @@ type parser struct {
 // recursing without limit (PUC enterlevel → luaE_incCstack, limit LUAI_MAXCCALLS).
 func (p *parser) enterLevel() {
 	p.depth++
-	if p.depth > maxCCalls {
+	if p.depth > MaxCCalls {
 		p.ls.lexError("too many C levels in function", 0)
 	}
 }

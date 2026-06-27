@@ -188,15 +188,11 @@ func (L *LState) pretailcall(ci *callInfo, funcIdx, narg1, delta int) int {
 	}
 }
 
-// maxCCalls bounds nested Go-level calls (metamethods, pcall, hooks, native
-// callbacks), matching PUC's LUAI_MAXCCALLS. Exceeding it raises a catchable
-// error rather than letting Go recursion overflow the real stack and abort.
-const maxCCalls = 200
-
 // call invokes the function at funcIdx (args already pushed) collecting nresults
 // results, running any Lua frame to completion (ldo.c ccall / luaD_call).
+// MaxCCalls (luaconf.go) bounds nested Go-level calls.
 func (L *LState) call(funcIdx, nresults int) {
-	if L.nCcalls >= maxCCalls {
+	if L.nCcalls >= MaxCCalls {
 		L.runtimeError("C stack overflow")
 	}
 	L.nCcalls++
