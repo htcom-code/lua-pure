@@ -329,7 +329,7 @@ func (L *LState) loadReader(fn Value, chunkname, mode string) (*Proto, Value, bo
 	}
 	cp, err := compileZIO(newReaderZIO(first, readNext), chunkname, len(first))
 	if err != nil {
-		if le, ok := err.(*luaError); ok { // a reader error: forward its value
+		if le, ok := err.(*LuaError); ok { // a reader error: forward its value
 			return nil, le.value, true
 		}
 		return nil, MkString(err.Error()), true
@@ -451,7 +451,7 @@ func (L *LState) protectReader(read func() string) (piece string, errv Value, ba
 	savedCI := L.ci
 	defer func() {
 		if r := recover(); r != nil {
-			le, ok := r.(*luaError)
+			le, ok := r.(*LuaError)
 			if !ok {
 				panic(r)
 			}
@@ -470,7 +470,7 @@ func (L *LState) protectReaderInto(readNext func() (string, bool), sb *strings.B
 	savedCI := L.ci
 	defer func() {
 		if r := recover(); r != nil {
-			le, ok := r.(*luaError)
+			le, ok := r.(*LuaError)
 			if !ok {
 				panic(r)
 			}

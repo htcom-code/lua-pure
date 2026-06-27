@@ -293,7 +293,7 @@ func (L *LState) protect(fn Value, args []Value) (results []Value, errv Value, o
 	savedTBC := len(L.tbc)
 	defer func() {
 		if r := recover(); r != nil {
-			le, isLE := r.(*luaError)
+			le, isLE := r.(*LuaError)
 			if !isLE {
 				panic(r)
 			}

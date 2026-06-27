@@ -1098,7 +1098,7 @@ func compileTokens(src, name string) (*Proto, error) {
 // (PUC lua_load over a Zio), so every chunk source — a string, a file, or a
 // load() reader — shares one path and is never buffered whole. sizeHint
 // pre-sizes the main chunk's vectors. A reader that raises mid-parse is caught
-// and returned as the load failure (a *luaError, whose value the caller
+// and returned as the load failure (a *LuaError, whose value the caller
 // forwards); a compile-limit/syntax error returns a *CompileError.
 func compileZIO(z *ZIO, name string, sizeHint int) (proto *Proto, err error) {
 	defer func() {
@@ -1106,7 +1106,7 @@ func compileZIO(z *ZIO, name string, sizeHint int) (proto *Proto, err error) {
 			switch e := r.(type) {
 			case *CompileError:
 				err = e
-			case *luaError: // a reader function raised
+			case *LuaError: // a reader function raised
 				err = e
 			default:
 				panic(r)

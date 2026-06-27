@@ -50,7 +50,7 @@ type LState struct {
 	started     bool
 	resumeCh    chan []Value
 	yieldCh     chan coMsg
-	deathErr    *luaError // error that killed this coroutine (reported by close)
+	deathErr    *LuaError // error that killed this coroutine (reported by close)
 	coYieldVals []Value   // values carried by a stackless yield panic to resumeSync
 
 	// Stackless coroutine driving. A coroutine first runs synchronously on the
@@ -113,7 +113,7 @@ const (
 type coMsg struct {
 	kind int // coYield / coReturn / coError
 	vals []Value
-	err  *luaError
+	err  *LuaError
 }
 
 const (
@@ -175,14 +175,16 @@ type callInfo struct {
 	next *callInfo
 }
 
-// luaError carries a Lua error value through Go's panic/recover (the longjmp
-// replacement noted in the migration plan).
-type luaError struct {
+// LuaError carries a Lua error value through Go's panic/recover (the longjmp
+// replacement noted in the migration plan). It is the error type returned by
+// the protected entry points (DoString, CallProto, Call), so embedders can
+// type-assert to *LuaError to recover the raised Lua value and traceback.
+type LuaError struct {
 	value     Value
 	traceback string
 }
 
-func (e *luaError) Error() string {
+func (e *LuaError) Error() string {
 	if e.value.IsString() {
 		return e.value.Str()
 	}
@@ -191,6 +193,13 @@ func (e *luaError) Error() string {
 	}
 	return fmt.Sprintf("(error object is a %s value)", typeName(e.value))
 }
+
+// Value returns the raised Lua error object (commonly a string, but any value
+// can be raised via error()).
+func (e *LuaError) Value() Value { return e.value }
+
+// Traceback returns the captured stack traceback, or "" if none was attached.
+func (e *LuaError) Traceback() string { return e.traceback }
 
 // NewState builds a fresh state with an empty globals table and registry.
 func NewState() *LState {
@@ -274,7 +283,7 @@ func (L *LState) throw(v Value) {
 			defer func() {
 				L.inErrfunc = false
 				if r := recover(); r != nil {
-					if _, ok := r.(*luaError); ok {
+					if _, ok := r.(*LuaError); ok {
 						errInHandler = true // handler itself raised
 					} else {
 						panic(r)
@@ -293,7 +302,7 @@ func (L *LState) throw(v Value) {
 			v = hv
 		}
 	}
-	panic(&luaError{value: v})
+	panic(&LuaError{value: v})
 }
 
 // runtimeError raises a string error prefixed with the current source position,

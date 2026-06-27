@@ -239,7 +239,7 @@ func (L *LState) call(funcIdx, nresults int) {
 	}
 }
 
-// pcall runs call() under recover, turning a raised luaError into a returned
+// pcall runs call() under recover, turning a raised LuaError into a returned
 // error and restoring the frame/stack to the pre-call state.
 func (L *LState) pcall(funcIdx, nresults int) (err error) {
 	savedCI := L.ci
@@ -248,7 +248,7 @@ func (L *LState) pcall(funcIdx, nresults int) (err error) {
 	savedTBC := len(L.tbc)
 	defer func() {
 		if r := recover(); r != nil {
-			le, ok := r.(*luaError)
+			le, ok := r.(*LuaError)
 			if !ok {
 				panic(r)
 			}
@@ -339,9 +339,9 @@ func (L *LState) newtbcupval(level int) {
 // PUC luaD_closeprotected threads the error status through the whole sequence
 // rather than aborting on the first __close error.
 func (L *LState) closeTBC(level int, errobj Value) {
-	var pending *luaError
+	var pending *LuaError
 	if !errobj.IsNil() {
-		pending = &luaError{value: errobj}
+		pending = &LuaError{value: errobj}
 	}
 	if pending = L.runCloses(level, pending); pending != nil {
 		// Re-raise the existing error object: any xpcall handler already ran at
@@ -355,7 +355,7 @@ func (L *LState) closeTBC(level int, errobj Value) {
 // first, threading the pending error (nil = none) through them. It returns the
 // final pending error without raising — closeTBC re-raises it; the pcall unwind
 // path turns it into the pcall result.
-func (L *LState) runCloses(level int, pending *luaError) *luaError {
+func (L *LState) runCloses(level int, pending *LuaError) *LuaError {
 	errobj := Nil
 	if pending != nil {
 		errobj = pending.value
@@ -377,13 +377,13 @@ func (L *LState) runCloses(level int, pending *luaError) *luaError {
 
 // callClose invokes one __close metamethod protected, returning the error it
 // raised (if any) so closeTBC can thread it through the remaining handlers. The
-// returned *luaError has already passed through any active message handler.
-func (L *LState) callClose(tm, v, errobj Value) (le *luaError, raised bool) {
+// returned *LuaError has already passed through any active message handler.
+func (L *LState) callClose(tm, v, errobj Value) (le *LuaError, raised bool) {
 	savedTop := L.top
 	savedCI := L.ci
 	defer func() {
 		if r := recover(); r != nil {
-			e, ok := r.(*luaError)
+			e, ok := r.(*LuaError)
 			if !ok {
 				panic(r)
 			}

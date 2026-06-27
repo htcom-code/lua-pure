@@ -90,9 +90,9 @@ func coCreate(L *LState) int {
 func (co *LState) coContinue() {
 	defer func() {
 		if r := recover(); r != nil {
-			le, ok := r.(*luaError)
+			le, ok := r.(*LuaError)
 			if !ok {
-				le = &luaError{value: MkString(fmt.Sprint(r))}
+				le = &LuaError{value: MkString(fmt.Sprint(r))}
 			}
 			// An error unwinding a coroutine closes its to-be-closed variables
 			// (PUC: lua_resume's error path runs luaF_close), threading any error
@@ -121,12 +121,12 @@ func (co *LState) coContinue() {
 // resume drives coroutine co with args, returning its yielded/returned values or
 // the error it raised. A coroutine runs synchronously (resumeSync) until it
 // promotes to a goroutine, after which resumes hand off over the channel.
-func (L *LState) resume(co *LState, args []Value) ([]Value, *luaError) {
+func (L *LState) resume(co *LState, args []Value) ([]Value, *LuaError) {
 	if co.status == coDead {
-		return nil, &luaError{value: MkString("cannot resume dead coroutine")}
+		return nil, &LuaError{value: MkString("cannot resume dead coroutine")}
 	}
 	if co.status != coSuspended {
-		return nil, &luaError{value: MkString("cannot resume non-suspended coroutine")}
+		return nil, &LuaError{value: MkString("cannot resume non-suspended coroutine")}
 	}
 	// The resumed thread continues the resumer's C-call depth (PUC ccall passes
 	// nCcalls from 'from'). A synchronous resume drives the coroutine on this
@@ -135,7 +135,7 @@ func (L *LState) resume(co *LState, args []Value) ([]Value, *luaError) {
 	// instead of raising a catchable "C stack overflow".
 	if L.nCcalls >= MaxCCalls {
 		L.status = coRunning
-		return nil, &luaError{value: MkString("C stack overflow")}
+		return nil, &LuaError{value: MkString("C stack overflow")}
 	}
 	co.status = coRunning
 	L.status = coNormal
@@ -150,7 +150,7 @@ func (L *LState) resume(co *LState, args []Value) ([]Value, *luaError) {
 // resumeSync runs co on this goroutine. yield unwinds here via coYieldSig; a
 // boundary that cannot suspend synchronously unwinds via promoteSig, which hands
 // co to a goroutine (recvCoMsg) for this and all later resumes.
-func (L *LState) resumeSync(co *LState, args []Value) (vals []Value, lerr *luaError) {
+func (L *LState) resumeSync(co *LState, args []Value) (vals []Value, lerr *LuaError) {
 	co.coSyncActive = true
 	defer func() {
 		co.coSyncActive = false
@@ -171,7 +171,7 @@ func (L *LState) resumeSync(co *LState, args []Value) (vals []Value, lerr *luaEr
 			vals, lerr = L.promoteAndResume(co, args)
 		default:
 			L.status = coRunning
-			le, ok := r.(*luaError)
+			le, ok := r.(*LuaError)
 			if !ok {
 				panic(r)
 			}
@@ -214,7 +214,7 @@ func (L *LState) resumeSync(co *LState, args []Value) (vals []Value, lerr *luaEr
 // — register reads — is idempotent, so re-running it in the goroutine is safe and
 // invokes the metamethod / protected call exactly once), starts the goroutine,
 // and waits for its first yield/return.
-func (L *LState) promoteAndResume(co *LState, args []Value) ([]Value, *luaError) {
+func (L *LState) promoteAndResume(co *LState, args []Value) ([]Value, *LuaError) {
 	co.promoted = true
 	ci := co.ci
 	for ci != nil && ci.status&cistC != 0 {
@@ -236,7 +236,7 @@ func (L *LState) promoteAndResume(co *LState, args []Value) ([]Value, *luaError)
 
 // recvCoMsg waits for the next message from a promoted coroutine's goroutine and
 // maps it to resume's result.
-func (L *LState) recvCoMsg(co *LState) ([]Value, *luaError) {
+func (L *LState) recvCoMsg(co *LState) ([]Value, *LuaError) {
 	m := <-co.yieldCh
 	L.status = coRunning
 	switch m.kind {
@@ -385,7 +385,7 @@ func coClose(L *LState) int {
 	// lua_closethread: run the pending to-be-closed variables' __close handlers
 	// (innermost first). The coroutine's goroutine is parked, so its stack is
 	// stable and we can drive the handlers on it from here.
-	var closeErr *luaError
+	var closeErr *LuaError
 	if len(co.tbc) > 0 {
 		// Closing continues the caller's C-call depth, so a chain of coroutines
 		// that close each other (each __close calling coroutine.close on the
@@ -404,9 +404,9 @@ func coClose(L *LState) int {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					le, ok := r.(*luaError)
+					le, ok := r.(*LuaError)
 					if !ok {
-						le = &luaError{value: MkString(fmt.Sprint(r))}
+						le = &LuaError{value: MkString(fmt.Sprint(r))}
 					}
 					closeErr = le
 				}

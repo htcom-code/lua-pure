@@ -98,6 +98,10 @@ func (L *LState) Push(v Value) { L.push(v) }
 
 // CallValue invokes fn with the given arguments, returning up to nresults
 // results. Intended for use from native functions (e.g. pcall, pairs).
+//
+// CallValue is unprotected: a Lua error raised by fn propagates as a panic
+// (caught by an enclosing protected call). Embedders calling into Lua from Go
+// should use Call, which runs fn protected and returns the error.
 func (L *LState) CallValue(fn Value, args []Value, nresults int) []Value {
 	funcIdx := L.top
 	L.push(fn)
@@ -109,4 +113,22 @@ func (L *LState) CallValue(fn Value, args []Value, nresults int) []Value {
 	copy(res, L.stack[funcIdx:L.top])
 	L.top = funcIdx
 	return res
+}
+
+// Call invokes fn with the given arguments under a protected call (pcall
+// semantics), returning up to nresults results (multRet for all). A Lua error
+// is returned as a *LuaError instead of propagating.
+func (L *LState) Call(fn Value, args []Value, nresults int) ([]Value, error) {
+	funcIdx := L.top
+	L.push(fn)
+	for _, a := range args {
+		L.push(a)
+	}
+	if err := L.pcall(funcIdx, nresults); err != nil {
+		return nil, err
+	}
+	res := make([]Value, L.top-funcIdx)
+	copy(res, L.stack[funcIdx:L.top])
+	L.top = funcIdx
+	return res, nil
 }

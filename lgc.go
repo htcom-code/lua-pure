@@ -135,7 +135,7 @@ func (L *LState) runGCMetamethod(v Value) {
 	funcIdx := L.scratchTop()
 	defer func() {
 		if r := recover(); r != nil {
-			if _, ok := r.(*luaError); ok {
+			if _, ok := r.(*LuaError); ok {
 				L.ci = savedCI
 				L.top = savedTop
 				return // swallow: __gc errors become warnings, never raise
