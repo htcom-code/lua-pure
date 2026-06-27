@@ -468,21 +468,24 @@ frame:
 
 			case OP_SETLIST:
 				n := GetArgB(i)
-				last := GetArgC(i)
+				base := GetArgC(i)
 				h := L.stack[ra].tablev()
 				if n == 0 {
 					n = L.top - ra - 1
 				} else {
 					L.top = ci.top
 				}
-				last += n
 				if Testk(i) {
-					last += GetArgAx(code[pc]) * (MaxArgC + 1)
+					base += GetArgAx(code[pc]) * (MaxArgC + 1)
 					pc++
 				}
-				for ; n > 0; n-- {
-					h.rawsetInt(int64(last), L.stack[ra+n])
-					last--
+				// Fill indices base+1..base+n in ascending order so each lands on
+				// the array fast path (k == len(arr)+1 → append). Filling high
+				// index first (as the constructor emits them) would route every
+				// element but the first through the hash part and then re-absorb
+				// them, the dominant alloc-churn source for table constructors.
+				for j := 1; j <= n; j++ {
+					h.rawsetInt(int64(base+j), L.stack[ra+j])
 				}
 
 			case OP_CLOSURE:
