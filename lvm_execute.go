@@ -459,7 +459,16 @@ frame:
 				L.stack[ra+5] = L.stack[ra+1]
 				L.stack[ra+6] = L.stack[ra+2]
 				L.top = ra + 4 + 3
-				L.call(ra+4, GetArgC(i))
+				// Run the iterator in this flat loop (like OP_CALL) rather than a
+				// Go-recursive L.call, so a yield from the iterator unwinds cleanly
+				// to resume. A Lua iterator reuses the dispatch loop and returns to
+				// the following TFORLOOP; a native iterator ran in precall, so we
+				// fall through to TFORLOOP with its results already at ra+4.
+				newci := L.precall(ra+4, GetArgC(i))
+				if newci != nil {
+					ci = newci
+					continue frame
+				}
 			case OP_TFORLOOP:
 				if !L.stack[ra+4].IsNil() {
 					L.stack[ra+2] = L.stack[ra+4]
