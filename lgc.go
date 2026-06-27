@@ -124,6 +124,11 @@ func (L *LState) runGCMetamethod(v Value) {
 	}
 	savedTop := L.top
 	savedCI := L.ci
+	// __gc is non-yieldable (PUC) and fires at unpredictable poll points; mark it
+	// so a yield inside raises and a running synchronous coroutine is not promoted
+	// by the call below.
+	L.noYield++
+	defer func() { L.noYield-- }()
 	// Push above the running frame's registers, not at L.top: a poll fires
 	// mid-instruction where L.top can sit below the live registers, so pushing
 	// there would clobber them (callTM uses scratchTop for the same reason).

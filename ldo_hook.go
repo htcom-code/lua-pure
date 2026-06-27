@@ -20,7 +20,10 @@ func (L *LState) fireHook(event string, line int) {
 	// Tag the hook's own frame so debug.getinfo reports namewhat == "hook"
 	// (PUC sets CIST_HOOK on the hook's CallInfo).
 	L.pendingHookMark = true
-	L.CallValue(L.hook, []Value{MkString(event), lineV}, 0)
+	// Run the hook non-yieldably so it executes in place rather than promoting a
+	// synchronously-running coroutine (a debug hook set on a coroutine must fire
+	// during that coroutine's run, like PUC's in-line hook dispatch).
+	L.callNoYield(L.hook, []Value{MkString(event), lineV}, 0)
 	L.top = saved
 	L.allowHook = true
 }

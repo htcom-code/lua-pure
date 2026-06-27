@@ -218,6 +218,15 @@ func (L *LState) pretailcall(ci *callInfo, funcIdx, narg1, delta int) int {
 // results, running any Lua frame to completion (ldo.c ccall / luaD_call).
 // MaxCCalls (luaconf.go) bounds nested Go-level calls.
 func (L *LState) call(funcIdx, nresults int) {
+	// A synchronously-running coroutine that reaches a yieldable Go-recursion
+	// boundary (this nested call — a metamethod or pcall's protected call) cannot
+	// suspend by unwinding, so it promotes to a goroutine. noYield boundaries
+	// (sort comparator, gsub replacement, __gc, __close) are non-yieldable and
+	// run synchronously: a yield there raises instead. resumeSync re-runs the
+	// triggering op, so this aborted call has no lasting effect.
+	if L.coSyncActive && L.noYield == 0 {
+		panic(promoteSig)
+	}
 	if L.nCcalls >= MaxCCalls {
 		L.runtimeError("C stack overflow")
 	}
@@ -311,6 +320,14 @@ func (L *LState) newtbcupval(level int) {
 			}
 		}
 		L.runtimeError("variable '%s' got a non-closable value", name)
+	}
+	// A __close handler may yield (PUC allows it). Closing happens at scope exit /
+	// return / error unwinding — points the stackless fast path cannot re-enter
+	// cleanly — so a coroutine that registers a to-be-closed variable promotes to
+	// the goroutine model now (before registering, so re-executing this op in the
+	// goroutine registers exactly once), where the proven close machinery runs.
+	if L.coSyncActive && L.noYield == 0 {
+		panic(promoteSig)
 	}
 	L.tbc = append(L.tbc, level)
 }

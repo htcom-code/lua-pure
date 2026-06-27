@@ -12,45 +12,55 @@ import (
 // global_State) are out of scope for this first VM; LState fuses the per-thread
 // and global state into one object.
 type LState struct {
-	stack []Value    // value stack; registers are absolute indices
-	top   int        // first free slot (PUC L->top)
-	ci    *callInfo  // current call frame
+	stack  []Value    // value stack; registers are absolute indices
+	top    int        // first free slot (PUC L->top)
+	ci     *callInfo  // current call frame
 	openuv []*Upvalue // open upvalues, ordered by descending level
 	tbc    []int      // stack indices of pending to-be-closed variables (ascending)
 
-	globals   *Table             // the globals table (_ENV)
-	registry  *Table             // the registry (LUA_REGISTRYINDEX analogue)
+	globals   *Table              // the globals table (_ENV)
+	registry  *Table              // the registry (LUA_REGISTRYINDEX analogue)
 	basicMT   [numTypeTags]*Table // metatables for the basic types (G->mt)
-	stringMT  *Table             // shared metatable for strings
-	pkgLoaded *Table             // package.loaded (set by the package library)
-	pkgTable  *Table             // the package table itself; require captures this
+	stringMT  *Table              // shared metatable for strings
+	pkgLoaded *Table              // package.loaded (set by the package library)
+	pkgTable  *Table              // the package table itself; require captures this
 	//                              like PUC's upvalue, so a reassigned global
 	//                              'package' does not break module loading.
 
 	// debug hook state (set by debug.sethook).
-	hook       Value // hook function (nil if none)
-	hookMask   int   // LUA_MASK* bits
-	hookCount  int   // reset value for the count hook (0 = off)
-	hookCdown  int   // instructions remaining until the next count hook
-	allowHook  bool  // false while inside a hook (no re-entry)
-	pendingHookMark bool // tag the next frame created as the hook frame (CIST_HOOK)
-	pendingFinMark  bool // tag the next frame created as a __gc finalizer (CIST_FIN)
+	hook            Value // hook function (nil if none)
+	hookMask        int   // LUA_MASK* bits
+	hookCount       int   // reset value for the count hook (0 = off)
+	hookCdown       int   // instructions remaining until the next count hook
+	allowHook       bool  // false while inside a hook (no re-entry)
+	pendingHookMark bool  // tag the next frame created as the hook frame (CIST_HOOK)
+	pendingFinMark  bool  // tag the next frame created as a __gc finalizer (CIST_FIN)
 
-	nCcalls int // nested Go-level call depth (LUAI_MAXCCALLS guard)
-	errReg  int // register of the value a failing opcode operated on (-1 = none)
-	errUpval int // upvalue index a failing GETTABUP operated on (-1 = none)
-	finGCTick int // instructions since the last finalizer poll (finGCPoll)
+	nCcalls    int // nested Go-level call depth (LUAI_MAXCCALLS guard)
+	errReg     int // register of the value a failing opcode operated on (-1 = none)
+	errUpval   int // upvalue index a failing GETTABUP operated on (-1 = none)
+	finGCTick  int // instructions since the last finalizer poll (finGCPoll)
 	weakGCTick int // finalizer polls since the last weak-table GC nudge
 
 	// coroutine state (per thread). Each coroutine runs in its own goroutine;
 	// resume/yield hand off cooperatively over these channels so only one is
 	// ever active. Threads share the global tables by pointer.
-	co       *coState
-	status   int
-	started  bool
-	resumeCh chan []Value
-	yieldCh  chan coMsg
-	deathErr *luaError // error that killed this coroutine (reported by close)
+	co          *coState
+	status      int
+	started     bool
+	resumeCh    chan []Value
+	yieldCh     chan coMsg
+	deathErr    *luaError // error that killed this coroutine (reported by close)
+	coYieldVals []Value   // values carried by a stackless yield panic to resumeSync
+
+	// Stackless coroutine driving. A coroutine first runs synchronously on the
+	// resumer's own goroutine (coSyncActive), with yield unwinding via panic. If
+	// it reaches a Go-recursion boundary that may yield (a metamethod or pcall),
+	// it cannot suspend synchronously, so it promotes: a goroutine takes over and
+	// the rest of its life uses the channel handoff (promoted). Pure-Lua
+	// coroutines never promote and pay no goroutine cost.
+	coSyncActive bool
+	promoted     bool
 
 	// math.random PRNG state (xoshiro256**). Shared by pointer across the VM's
 	// threads, matching PUC's single RanState upvalue bound at library open.
@@ -86,9 +96,9 @@ type coState struct {
 	// goroutine and only enqueues the object here under finMu; the Lua main
 	// thread drains the queue and runs __gc synchronously. finPending mirrors
 	// len(finQueue) so the VM loop can poll without taking the lock.
-	finMu          sync.Mutex
-	finQueue       []Value
-	finPending     int32 // queued, not yet drained
+	finMu      sync.Mutex
+	finQueue   []Value
+	finPending int32 // queued, not yet drained
 }
 
 // Coroutine statuses (lua.h LUA_YIELD etc. / coroutine.status strings).
@@ -309,7 +319,7 @@ func (ci *callInfo) isLuaFrame() bool { return ci != nil && ci.status&cistC == 0
 // literal, "@file" the file name (truncated from the front with "..."), and any
 // other source is shown as [string "first line..."], truncated to LUA_IDSIZE.
 func shortSrc(source string) string {
-	idSize := IDSize // LUA_IDSIZE (luaconf.go)
+	idSize := IDSize                      // LUA_IDSIZE (luaconf.go)
 	if source != "" && source[0] == '=' { // literal
 		if len(source) <= idSize {
 			return source[1:]

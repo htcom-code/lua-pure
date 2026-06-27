@@ -2,12 +2,30 @@ package luapure
 
 import "fmt"
 
-// The coroutine library (lcorolib.c) on a goroutine-per-coroutine model: each
-// coroutine runs its Lua code in a dedicated goroutine, and resume/yield hand
-// control back and forth over unbuffered channels so exactly one goroutine is
-// ever active. Because a yield merely blocks the coroutine's goroutine (its Go
-// call stack is preserved), yielding works across any frame — including pcall
-// and metamethods — which is broader than PUC's C-boundary restriction.
+// The coroutine library (lcorolib.c). A coroutine first runs synchronously on
+// the resumer's own goroutine: yield unwinds the (flat) Go stack with a panic
+// caught in resumeSync, and re-resume re-enters the dispatch loop at the saved
+// pc — no goroutine, so a pure-Lua generator pays only the panic. When a
+// coroutine reaches a Go-recursion boundary that may yield (a metamethod or a
+// pcall) it cannot suspend synchronously, so it promotes: a dedicated goroutine
+// takes over and the rest of its life uses an unbuffered-channel handoff (the
+// classic goroutine-per-coroutine model, which preserves the Go call stack so a
+// yield can cross any frame). table.sort comparators / gsub replacements run
+// non-yieldably (noYield), matching PUC's C-call boundary error.
+
+// coYieldSig is panicked to unwind a synchronously-running coroutine's Go stack
+// back to resumeSync; the yielded values ride on the thread's coYieldVals.
+// Panicking the shared pointer avoids an allocation per yield.
+type coYieldPanic struct{}
+
+var coYieldSig = &coYieldPanic{}
+
+// promoteSig is panicked when a synchronously-running coroutine hits a yieldable
+// Go-recursion boundary (a metamethod or pcall): resumeSync catches it and hands
+// the coroutine to a goroutine to finish (and yield) the classic way.
+type promotePanic struct{}
+
+var promoteSig = &promotePanic{}
 
 func (L *LState) OpenCoroutine() {
 	t := newTable()
@@ -66,9 +84,10 @@ func coCreate(L *LState) int {
 	return 1
 }
 
-// coRun is the goroutine body for a coroutine: it calls the stored function and
-// reports the outcome (return values or a raised error) back to the resumer.
-func (co *LState) coRun(args []Value) {
+// coContinue is the goroutine body for a promoted coroutine: it resumes the
+// dispatch loop where promotion (or a later channel resume) left it and reports
+// the outcome — yielded values, a return, or a raised error — over the channel.
+func (co *LState) coContinue() {
 	defer func() {
 		if r := recover(); r != nil {
 			le, ok := r.(*luaError)
@@ -89,17 +108,19 @@ func (co *LState) coRun(args []Value) {
 			co.yieldCh <- coMsg{kind: coErrorMsg, err: le}
 		}
 	}()
-	for _, a := range args {
-		co.push(a)
+	if co.ci == nil {
+		co.call(0, multRet) // native-function body: restart the call from stack[0]
+	} else {
+		co.execute(co.ci) // continue from the rewound trigger op (or a channel resume)
 	}
-	co.call(0, multRet) // function is at stack[0]
 	results := make([]Value, co.top)
 	copy(results, co.stack[:co.top])
 	co.yieldCh <- coMsg{kind: coReturnMsg, vals: results}
 }
 
-// resume drives coroutine co with args, returning its yielded/returned values
-// or the error it raised.
+// resume drives coroutine co with args, returning its yielded/returned values or
+// the error it raised. A coroutine runs synchronously (resumeSync) until it
+// promotes to a goroutine, after which resumes hand off over the channel.
 func (L *LState) resume(co *LState, args []Value) ([]Value, *luaError) {
 	if co.status == coDead {
 		return nil, &luaError{value: MkString("cannot resume dead coroutine")}
@@ -107,19 +128,115 @@ func (L *LState) resume(co *LState, args []Value) ([]Value, *luaError) {
 	if co.status != coSuspended {
 		return nil, &luaError{value: MkString("cannot resume non-suspended coroutine")}
 	}
+	// The resumed thread continues the resumer's C-call depth (PUC ccall passes
+	// nCcalls from 'from'). A synchronous resume drives the coroutine on this
+	// goroutine (resumeSync recurses into execute), so deeply nested resume must
+	// be bounded here — like luaD_call's check — or the Go stack overflows
+	// instead of raising a catchable "C stack overflow".
+	if L.nCcalls >= MaxCCalls {
+		L.status = coRunning
+		return nil, &luaError{value: MkString("C stack overflow")}
+	}
 	co.status = coRunning
 	L.status = coNormal
-	// The resumed thread continues the resumer's C-call depth (PUC ccall passes
-	// nCcalls from 'from'), so unbounded create-and-resume nesting hits the
-	// LUAI_MAXCCALLS limit and raises "C stack overflow" instead of spawning
-	// goroutines without end.
 	co.nCcalls = L.nCcalls + 1
+	if co.promoted {
+		co.resumeCh <- args
+		return L.recvCoMsg(co)
+	}
+	return L.resumeSync(co, args)
+}
+
+// resumeSync runs co on this goroutine. yield unwinds here via coYieldSig; a
+// boundary that cannot suspend synchronously unwinds via promoteSig, which hands
+// co to a goroutine (recvCoMsg) for this and all later resumes.
+func (L *LState) resumeSync(co *LState, args []Value) (vals []Value, lerr *luaError) {
+	co.coSyncActive = true
+	defer func() {
+		co.coSyncActive = false
+		r := recover()
+		switch {
+		case r == nil:
+			L.status = coRunning
+			co.status = coDead
+			vals = make([]Value, co.top)
+			copy(vals, co.stack[:co.top])
+		case r == coYieldSig:
+			L.status = coRunning
+			co.status = coSuspended
+			vals = co.coYieldVals
+		case r == promoteSig:
+			// The coroutine keeps running (now on a goroutine); the resumer stays
+			// "normal" until recvCoMsg gets its first yield/return.
+			vals, lerr = L.promoteAndResume(co, args)
+		default:
+			L.status = coRunning
+			le, ok := r.(*luaError)
+			if !ok {
+				panic(r)
+			}
+			// Error path mirrors coContinue: run pending __close, remember for close.
+			if len(co.tbc) > 0 {
+				if final := co.runCloses(0, le); final != nil {
+					le = final
+				}
+			}
+			co.status = coDead
+			co.deathErr = le
+			lerr = le
+		}
+	}()
 	if !co.started {
 		co.started = true
-		go co.coRun(args)
-	} else {
-		co.resumeCh <- args
+		for _, a := range args {
+			co.push(a)
+		}
+		ci := co.precall(0, multRet) // function is at stack[0]
+		if ci != nil {
+			ci.status |= cistFresh
+			co.execute(ci)
+		}
+		return
 	}
+	// Re-resume after a stackless yield: complete the suspended yield C-call with
+	// args as its results, then continue the Lua frame that called yield.
+	yci := co.ci
+	for _, a := range args {
+		co.push(a)
+	}
+	co.poscall(yci, len(args))
+	co.execute(co.ci)
+	return
+}
+
+// promoteAndResume hands a coroutine that hit a yieldable boundary to a
+// goroutine. It rewinds to the boundary's triggering op (whose pre-boundary work
+// — register reads — is idempotent, so re-running it in the goroutine is safe and
+// invokes the metamethod / protected call exactly once), starts the goroutine,
+// and waits for its first yield/return.
+func (L *LState) promoteAndResume(co *LState, args []Value) ([]Value, *luaError) {
+	co.promoted = true
+	ci := co.ci
+	for ci != nil && ci.status&cistC != 0 {
+		ci = ci.prev // skip the C frame(s) of the boundary back to the Lua frame
+	}
+	co.ci = ci
+	if ci != nil {
+		ci.savedpc-- // re-execute the op whose metamethod/pcall boundary promoted
+	} else {
+		// No Lua frame: the coroutine body is itself a native function (e.g.
+		// coroutine.create(pcall)) that promoted before any Lua frame existed.
+		// Restart it from stack[0] with the original args (still in place; the
+		// native body read them without overwriting and had no other effect).
+		co.top = 1 + len(args)
+	}
+	go co.coContinue()
+	return L.recvCoMsg(co)
+}
+
+// recvCoMsg waits for the next message from a promoted coroutine's goroutine and
+// maps it to resume's result.
+func (L *LState) recvCoMsg(co *LState) ([]Value, *luaError) {
 	m := <-co.yieldCh
 	L.status = coRunning
 	switch m.kind {
@@ -175,6 +292,13 @@ func coYieldFn(L *LState) int {
 	for i := 0; i < n; i++ {
 		vals[i] = L.Arg(i + 1)
 	}
+	if L.coSyncActive {
+		// Running synchronously (no Go-recursion boundary above us, or we would
+		// have promoted): unwind the flat Go stack back to resumeSync.
+		L.coYieldVals = vals
+		panic(coYieldSig)
+	}
+	// Promoted: hand control back to the resumer over the channel.
 	L.yieldCh <- coMsg{kind: coYieldMsg, vals: vals}
 	in := <-L.resumeCh // suspend until the next resume
 	for _, v := range in {
