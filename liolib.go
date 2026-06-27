@@ -2,6 +2,7 @@ package luapure
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -16,7 +17,8 @@ type luaFile struct {
 	f      *os.File
 	r      *bufio.Reader
 	closed bool
-	std    bool // a standard stream: cannot be closed
+	std    bool  // a standard stream: cannot be closed
+	ferr   error // last real (non-EOF) read error, PUC's ferror(f) flag
 }
 
 func (L *LState) OpenIO() {
@@ -32,6 +34,9 @@ func (L *LState) OpenIO() {
 	fileMT := newTable()
 	fileMT.rawset(MkString("__index"), mkTable(fileMethods))
 	fileMT.rawset(MkString("__name"), MkString("FILE*"))
+	// __tostring renders "file (closed)" or "file (0x...)" (liolib.c f_tostring),
+	// overriding the __name fallback ("FILE*: 0x...").
+	fileMT.rawset(MkString("__tostring"), NewGoFunc("__tostring", fileToString))
 	// __gc and __close both close the handle (liolib.c f_gc); a 5.4 file handle
 	// is a to-be-closed value via __close.
 	fileMT.rawset(MkString("__gc"), NewGoFunc("__gc", fileGc))
@@ -94,7 +99,7 @@ func (L *LState) defaultOutput() *luaFile {
 	v := L.registry.rawgetStr("_IO_OUTPUT")
 	lf := v.userData().data.(*luaFile)
 	if lf.closed {
-		L.errorf("attempt to use a closed file")
+		L.errorf("default output file is closed") // getiofile
 	}
 	return lf
 }
@@ -103,7 +108,7 @@ func (L *LState) defaultInput() *luaFile {
 	v := L.registry.rawgetStr("_IO_INPUT")
 	lf := v.userData().data.(*luaFile)
 	if lf.closed {
-		L.errorf("attempt to use a closed file")
+		L.errorf("default input file is closed") // getiofile
 	}
 	return lf
 }
@@ -173,8 +178,8 @@ func ioOutput(L *LState) int { return ioStream(L, "_IO_OUTPUT", "w") }
 // --- io.* wrappers over the default streams ---
 
 func ioWrite(L *LState) int {
-	if writeTo(L, L.defaultOutput(), 1) == 0 {
-		return 0
+	if n, ok := writeTo(L, L.defaultOutput(), 1); !ok {
+		return n // (nil, message, errno) on write error
 	}
 	L.Push(L.registry.rawgetStr("_IO_OUTPUT")) // return the file for chaining
 	return 1
@@ -222,23 +227,45 @@ func ioOpen(L *LState) int {
 
 func ioLines(L *LState) int {
 	var lf *luaFile
+	var fv Value
+	closeOnEOF := false
 	if L.NArgs() >= 1 && L.Arg(1).IsString() {
 		f, err := os.Open(L.Arg(1).Str())
 		if err != nil {
 			L.errorf("cannot open '%s'", L.Arg(1).Str())
 		}
-		lf = &luaFile{f: f, r: bufio.NewReader(f)}
+		// A file opened by io.lines(filename) is owned by the iterator: wrap it
+		// as a real handle (with __close) so it can also serve as the loop's
+		// to-be-closed value, and close it at EOF.
+		mt := L.registry.rawgetStr("_IO_FILE_MT").tablev()
+		fv = L.newFile(f, mt)
+		lf = fv.userData().data.(*luaFile)
+		closeOnEOF = true
 	} else {
 		lf = L.defaultInput()
 	}
-	L.Push(linesIterator(L, lf))
+	fmts := collectLineFormats(L, 2)
+	L.Push(linesIterator(L, lf, closeOnEOF, fmts))
+	if closeOnEOF {
+		// Generic-for to-be-closed protocol (io_lines): iterator, state (nil),
+		// control (nil), and the file as the to-be-closed value.
+		L.Push(Nil)
+		L.Push(Nil)
+		L.Push(fv)
+		return 4
+	}
 	return 1
 }
 
 func ioClose(L *LState) int {
-	lf := L.defaultOutput()
+	// Only fall back to the default output when given no argument (io_close);
+	// fetching it eagerly would raise on an already-closed default output even
+	// when an explicit file was passed.
+	var lf *luaFile
 	if L.NArgs() >= 1 {
 		lf = L.toFile(1)
+	} else {
+		lf = L.defaultOutput()
 	}
 	return doClose(L, lf)
 }
@@ -263,8 +290,8 @@ func ioType(L *LState) int {
 
 func fileWrite(L *LState) int {
 	lf := L.toFile(1)
-	if writeTo(L, lf, 2) == 0 {
-		return 0
+	if n, ok := writeTo(L, lf, 2); !ok {
+		return n // (nil, message, errno) on write error
 	}
 	L.Push(L.Arg(1)) // return the file for chaining
 	return 1
@@ -282,6 +309,19 @@ func fileFlush(L *LState) int {
 	lf := L.toFile(1)
 	lf.f.Sync()
 	L.Push(L.Arg(1))
+	return 1
+}
+
+// fileToString backs the file handle's __tostring (liolib.c f_tostring): a
+// closed handle renders "file (closed)", an open one "file (0x...)". PUC formats
+// the FILE* pointer with %p; we use the underlying *os.File for the same shape.
+func fileToString(L *LState) int {
+	lf := L.checkFile(1)
+	if lf.closed {
+		L.Push(MkString("file (closed)"))
+	} else {
+		L.Push(MkString(fmt.Sprintf("file (%p)", lf.f)))
+	}
 	return 1
 }
 
@@ -343,40 +383,87 @@ func fileSeek(L *LState) int {
 
 func fileLines(L *LState) int {
 	lf := L.toFile(1)
-	L.Push(linesIterator(L, lf))
+	// file:lines() does not own/close the file; formats follow the file at arg 1.
+	L.Push(linesIterator(L, lf, false, collectLineFormats(L, 2)))
 	return 1
 }
 
 // --- shared read/write helpers ---
 
-func writeTo(L *LState, lf *luaFile, first int) int {
+// writeTo writes args first..NArgs to lf (g_write). On success it pushes
+// nothing and returns ok=true, leaving the caller to push the file for
+// chaining. On a write error (e.g. writing to a read-only handle) it pushes the
+// luaL_fileresult failure tuple (nil, message, errno) and returns n=3, ok=false
+// so the caller returns those results instead.
+func writeTo(L *LState, lf *luaFile, first int) (n int, ok bool) {
 	for i := first; i <= L.NArgs(); i++ {
 		v := L.Arg(i)
 		if !v.IsString() && !v.IsNumber() {
 			L.argError(i, "string expected")
 		}
-		lf.f.WriteString(tostr(v))
+		if _, err := lf.f.WriteString(tostr(v)); err != nil {
+			pushFileError(L, err)
+			return 3, false
+		}
 	}
-	return 1
+	return 0, true
+}
+
+// pushFileError pushes the luaL_fileresult failure tuple (nil, message, errno)
+// and returns 3, the number of results.
+func pushFileError(L *LState, err error) int {
+	L.Push(Nil)
+	L.Push(MkString(errReason(err)))
+	L.Push(Int(int64(errnoOf(err))))
+	return 3
+}
+
+// isReadErr reports whether err from a read is a genuine I/O failure rather than
+// an ordinary end-of-file (PUC distinguishes feof from ferror).
+func isReadErr(err error) bool {
+	return err != nil && err != io.EOF && err != io.ErrUnexpectedEOF
 }
 
 // readFrom ports g_read: with no format it reads one chopped line; otherwise it
 // reads each format in turn and stops at the first that hits end-of-file, whose
-// result becomes nil (the remaining formats are not attempted).
+// result becomes nil (the remaining formats are not attempted). The format
+// specs are L.Arg(first..NArgs).
 func readFrom(L *LState, lf *luaFile, first int) int {
+	lf.ferr = nil
 	nargs := L.NArgs()
+	base := L.top
 	if first > nargs {
 		if line, ok := readLine(lf, false); ok {
 			L.Push(MkString(line))
 		} else {
 			L.Push(Nil)
 		}
-		return 1
+	} else {
+		specs := make([]Value, 0, nargs-first+1)
+		for i := first; i <= nargs; i++ {
+			specs = append(specs, L.Arg(i))
+		}
+		readSpecs(L, lf, specs, func(i int) { L.argError(first+i, "invalid format") })
 	}
+	// A genuine read error (e.g. reading a write-only handle) takes precedence
+	// over the nil result, returning luaL_fileresult (nil, message, errno).
+	if lf.ferr != nil {
+		L.top = base
+		return pushFileError(L, lf.ferr)
+	}
+	return L.top - base
+}
+
+// readSpecs is the body of g_read: it applies each read spec against lf, pushing
+// one result per spec and returning the count. A numeric spec reads that many
+// bytes (0 = EOF test), a string spec selects n/l/L/a. At the first spec that
+// hits end-of-file the remaining specs are skipped and the last result is
+// nil'd. badSpec(i) reports an invalid spec (i is a 0-based index into specs).
+func readSpecs(L *LState, lf *luaFile, specs []Value, badSpec func(i int)) int {
 	results := 0
 	success := true
-	for i := first; i <= nargs && success; i++ {
-		spec := L.Arg(i)
+	for i := 0; i < len(specs) && success; i++ {
+		spec := specs[i]
 		if spec.IsNumber() {
 			n := int(spec.AsInt())
 			if n == 0 { // test_eof: "" if more to read, else fail
@@ -390,7 +477,7 @@ func readFrom(L *LState, lf *luaFile, first int) int {
 		} else {
 			fmtStr := strings.TrimPrefix(spec.Str(), "*")
 			if fmtStr == "" {
-				L.argError(i, "invalid format")
+				badSpec(i)
 			}
 			switch fmtStr[0] {
 			case 'n':
@@ -408,7 +495,7 @@ func readFrom(L *LState, lf *luaFile, first int) int {
 			case 'a':
 				L.Push(MkString(readAll(lf))) // always succeeds
 			default:
-				L.argError(i, "invalid format")
+				badSpec(i)
 			}
 		}
 		results++
@@ -422,19 +509,29 @@ func readFrom(L *LState, lf *luaFile, first int) int {
 // readChars reads up to n bytes (read_chars); ok is false at immediate EOF.
 func readChars(lf *luaFile, n int) (string, bool) {
 	buf := make([]byte, n)
-	m, _ := io.ReadFull(lf.r, buf)
+	m, err := io.ReadFull(lf.r, buf)
+	if m == 0 && isReadErr(err) {
+		lf.ferr = err
+	}
 	return string(buf[:m]), m > 0
 }
 
-// readAll reads to end-of-file (read_all).
+// readAll reads to end-of-file (read_all). io.ReadAll treats EOF as success, so
+// any returned error is a genuine read failure.
 func readAll(lf *luaFile) string {
-	data, _ := io.ReadAll(lf.r)
+	data, err := io.ReadAll(lf.r)
+	if err != nil {
+		lf.ferr = err
+	}
 	return string(data)
 }
 
 // testEOF reports whether the stream has more data (test_eof).
 func testEOF(lf *luaFile) bool {
 	_, err := lf.r.Peek(1)
+	if isReadErr(err) {
+		lf.ferr = err
+	}
 	return err == nil
 }
 
@@ -446,6 +543,9 @@ func readNumber(lf *luaFile) (Value, bool) {
 	var buff []byte
 	cur, e := br.ReadByte()
 	eof := e != nil
+	if isReadErr(e) {
+		lf.ferr = e
+	}
 	overflow := false
 	nextc := func() bool {
 		if len(buff) >= maxlen {
@@ -540,6 +640,9 @@ func checkMode(mode string) bool {
 func readLine(lf *luaFile, keepEOL bool) (string, bool) {
 	line, err := lf.r.ReadString('\n')
 	if line == "" && err != nil {
+		if isReadErr(err) {
+			lf.ferr = err
+		}
 		return "", false
 	}
 	if !keepEOL {
@@ -563,14 +666,65 @@ func doClose(L *LState, lf *luaFile) int {
 	return 1
 }
 
-func linesIterator(L *LState, lf *luaFile) Value {
+// maxArgLine bounds the read formats an io.lines/file:lines iterator may carry
+// (PUC MAXARGLINE); more raises "too many arguments".
+const maxArgLine = 250
+
+// linesIterator builds the io.lines/file:lines iterator (liolib.c io_readline).
+// fmts are the read formats captured at the lines() call (empty = one chopped
+// line per step). closeOnEOF is true only for the io.lines(filename) form,
+// which owns the file it opened and closes it on reaching end-of-file. Either
+// way, calling the iterator after the file is closed raises "file is already
+// closed".
+func linesIterator(L *LState, lf *luaFile, closeOnEOF bool, fmts []Value) Value {
 	return NewGoFunc("lines_iter", func(L *LState) int {
-		line, ok := readLine(lf, false)
-		if !ok {
+		if lf.closed {
+			L.errorf("file is already closed")
+		}
+		lf.ferr = nil
+		base := L.top
+		var n int
+		if len(fmts) == 0 {
+			line, ok := readLine(lf, false)
+			if ok {
+				L.Push(MkString(line))
+				return 1
+			}
+			L.Push(Nil)
+			n = 1
+		} else {
+			n = readSpecs(L, lf, fmts, func(int) { L.errorf("invalid format") })
+		}
+		// A genuine read error raises here (PUC io_readline turns g_read's
+		// fileresult message into an error); a plain EOF ends iteration below.
+		if lf.ferr != nil {
+			L.errorf("%s", errReason(lf.ferr))
+		}
+		// EOF when the first result is nil: like PUC io_readline, drop the
+		// results and close the file if this iterator owns it.
+		if n > 0 && L.stack[base].IsNil() {
+			if closeOnEOF && !lf.std && lf.f != nil {
+				lf.f.Close()
+				lf.closed = true
+			}
+			L.top = base
 			L.Push(Nil)
 			return 1
 		}
-		L.Push(MkString(line))
-		return 1
+		return n
 	})
+}
+
+// collectLineFormats gathers the read formats passed to a lines() call,
+// L.Arg(first..NArgs), enforcing PUC's MAXARGLINE ceiling.
+func collectLineFormats(L *LState, first int) []Value {
+	nargs := L.NArgs()
+	if nargs-first+1 > maxArgLine {
+		L.argError(first+maxArgLine, "too many arguments")
+	}
+	var fmts []Value
+	for i := first; i <= nargs; i++ {
+		fmts = append(fmts, L.Arg(i))
+	}
+	return fmts
 }
