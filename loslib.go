@@ -159,13 +159,17 @@ func (L *LState) strftime(format string, t time.Time) string {
 	if uday == 0 {
 		uday = 7
 	}
-	repl["w"] = fmt.Sprintf("%d", wday)           // weekday, Sunday=0
-	repl["u"] = fmt.Sprintf("%d", uday)           // ISO weekday, Monday=1
-	repl["j"] = fmt.Sprintf("%03d", t.YearDay())  // day of year, 001-366
-	repl["C"] = fmt.Sprintf("%02d", t.Year()/100) // century
-	repl["V"] = fmt.Sprintf("%02d", isoWeek)      // ISO 8601 week number
-	repl["G"] = fmt.Sprintf("%d", isoYear)        // ISO 8601 year
-	repl["g"] = fmt.Sprintf("%02d", isoYear%100)  // ISO 8601 year, 2-digit
+	yday0 := t.YearDay() - 1                          // 0-based day of year, as in C strftime
+	wmon := (wday + 6) % 7                            // weekday with Monday=0..Sunday=6
+	repl["w"] = fmt.Sprintf("%d", wday)               // weekday, Sunday=0
+	repl["u"] = fmt.Sprintf("%d", uday)               // ISO weekday, Monday=1
+	repl["j"] = fmt.Sprintf("%03d", t.YearDay())      // day of year, 001-366
+	repl["C"] = fmt.Sprintf("%02d", t.Year()/100)     // century
+	repl["U"] = fmt.Sprintf("%02d", (yday0+7-wday)/7) // week of year, Sunday-first
+	repl["W"] = fmt.Sprintf("%02d", (yday0+7-wmon)/7) // week of year, Monday-first
+	repl["V"] = fmt.Sprintf("%02d", isoWeek)          // ISO 8601 week number
+	repl["G"] = fmt.Sprintf("%d", isoYear)            // ISO 8601 year
+	repl["g"] = fmt.Sprintf("%02d", isoYear%100)      // ISO 8601 year, 2-digit
 	var sb []byte
 	for i := 0; i < len(format); i++ {
 		if format[i] != '%' {

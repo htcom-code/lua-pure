@@ -70,4 +70,14 @@ eq(os.date("!%g", MON), "06", "%g ISO year 2-digit")
 eq(os.date("!%V", MON), "01", "%V ISO week (zero-padded)")
 eq(os.date("!%V", JUL), "28", "%V ISO week Jul")
 
+-- %U (Sunday-first) and %W (Monday-first) week numbers, incl. the year-start
+-- Sunday where they diverge: 2006-01-01 is in U-week 01 but W-week 00.
+local NYD = 1136073600 -- 2006-01-01 14:40:00Z, a Sunday
+eq(os.date("!%U", MON), "01", "%U week Jan 2")
+eq(os.date("!%W", MON), "01", "%W week Jan 2")
+eq(os.date("!%U", JUL), "28", "%U week Jul 13")
+eq(os.date("!%W", JUL), "28", "%W week Jul 13")
+eq(os.date("!%U", NYD), "01", "%U Jan 1 Sunday = week 01")
+eq(os.date("!%W", NYD), "00", "%W Jan 1 Sunday = week 00")
+
 print("os-date-format: all cases passed")
