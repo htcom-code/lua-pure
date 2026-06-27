@@ -109,6 +109,25 @@ func Example_userdata() {
 	// Output: 12
 }
 
+// A uservalue keeps a Lua value associated with (and reachable from) a
+// userdatum. Here a script stashes a label on the object and reads it back; the
+// host sees the same slot through UserValue.
+func Example_uservalue() {
+	L := luapure.NewState()
+	L.OpenLibs()
+
+	mt, _ := L.NewMetatable("Box")
+	ud := L.NewUserDataUV(struct{}{}, 1, mt)
+	L.SetGlobal("box", ud)
+
+	if _, err := L.DoString(`debug.setuservalue(box, "hello", 1)`, "=embed"); err != nil {
+		panic(err)
+	}
+	v, _ := ud.UserValue(1)
+	fmt.Println(v.Str())
+	// Output: hello
+}
+
 // A sandbox state omits the dangerous libraries and the code-loading globals.
 func Example_sandbox() {
 	L := luapure.NewSandbox()

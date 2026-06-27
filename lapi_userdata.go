@@ -30,7 +30,20 @@ package luapure
 // __gc field a finalizer is registered the same way lua_setmetatable does, so
 // the embedder's __gc runs when the object becomes unreachable.
 func (L *LState) NewUserData(data any, meta *Table) Value {
+	return L.NewUserDataUV(data, 0, meta)
+}
+
+// NewUserDataUV is NewUserData with nuv associated Lua-value slots (uservalues),
+// the lua_newuserdatauv form. The slots start nil and are read and written with
+// UserValue / SetUserValue (and the script-facing debug.getuservalue/
+// setuservalue). Unlike the Go payload, a uservalue is a Lua value the GC tracks
+// — use it to keep a Lua object (a callback, a config table) alive alongside the
+// userdatum and reachable from it without a separate registry entry.
+func (L *LState) NewUserDataUV(data any, nuv int, meta *Table) Value {
 	u := &userData{data: data, meta: meta}
+	if nuv > 0 {
+		u.uv = make([]Value, nuv)
+	}
 	v := mkUserData(u)
 	if meta != nil {
 		L.checkFinalizer(v)
@@ -55,6 +68,44 @@ func (v Value) UserMetatable() *Table {
 		return nil
 	}
 	return v.userData().meta
+}
+
+// NumUserValues reports how many uservalue slots v was created with, or 0 when
+// v is not full userdata.
+func (v Value) NumUserValues() int {
+	if v.tag != tagUserData {
+		return 0
+	}
+	return len(v.userData().uv)
+}
+
+// UserValue returns the n-th uservalue slot (1-based) of a full userdata, the
+// lua_getiuservalue form. ok is false when v is not userdata or n is out of
+// range, in which case the value is Nil.
+func (v Value) UserValue(n int) (val Value, ok bool) {
+	if v.tag != tagUserData {
+		return Nil, false
+	}
+	uv := v.userData().uv
+	if n < 1 || n > len(uv) {
+		return Nil, false
+	}
+	return uv[n-1], true
+}
+
+// SetUserValue assigns the n-th uservalue slot (1-based) of a full userdata,
+// the lua_setiuservalue form. It reports false (assigning nothing) when v is not
+// userdata or n is out of range.
+func (v Value) SetUserValue(n int, val Value) bool {
+	if v.tag != tagUserData {
+		return false
+	}
+	uv := v.userData().uv
+	if n < 1 || n > len(uv) {
+		return false
+	}
+	uv[n-1] = val
+	return true
 }
 
 // SetUserMetatable replaces a full userdata's metatable (nil to clear it),

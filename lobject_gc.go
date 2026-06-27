@@ -27,11 +27,14 @@ func mkClosure(c *Closure) Value { return Value{tag: tagFunction, gc: unsafe.Poi
 func (v Value) closure() *Closure { return (*Closure)(v.gc) }
 
 // userData is the backing object for full userdata: an arbitrary Go payload
-// plus its own metatable (file handles, etc.).
+// plus its own metatable (file handles, etc.) and any associated Lua values
+// (uservalues). The payload and uservalues are independent, mirroring PUC where
+// a userdatum carries both a memory block and lua_getiuservalue slots.
 type userData struct {
 	data   interface{}
 	meta   *Table
-	finReg bool // a Go finalizer for __gc has been attached (PUC FINALIZEDBIT)
+	uv     []Value // associated Lua values (lua_getiuservalue / setiuservalue)
+	finReg bool     // a Go finalizer for __gc has been attached (PUC FINALIZEDBIT)
 }
 
 func mkUserData(u *userData) Value { return Value{tag: tagUserData, gc: unsafe.Pointer(u)} }

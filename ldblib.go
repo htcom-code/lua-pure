@@ -634,8 +634,8 @@ func dbgGetuservalue(L *LState) int {
 	n := int(L.optInt(2, 1))
 	if v.IsUserData() {
 		ud := v.userData()
-		if uvs, ok := ud.data.(*userValues); ok && n >= 1 && n <= len(uvs.vals) {
-			L.Push(uvs.vals[n-1])
+		if n >= 1 && n <= len(ud.uv) {
+			L.Push(ud.uv[n-1])
 			L.Push(True)
 			return 2
 		}
@@ -655,19 +655,16 @@ func dbgSetuservalue(L *LState) int {
 	}
 	val := L.checkAny(2)
 	ud := v.userData()
-	uvs, ok := ud.data.(*userValues)
-	if !ok || n < 1 || n > len(uvs.vals) {
+	if n < 1 || n > len(ud.uv) {
 		L.Push(Nil) // n out of range: lua_setiuservalue fails
 		return 1
 	}
-	uvs.vals[n-1] = val
+	ud.uv[n-1] = val
 	L.Push(v)
 	return 1
 }
 
 func dbgDebug(L *LState) int { return 0 } // interactive prompt: no-op
-
-type userValues struct{ vals []Value }
 
 // checkFunc returns the closure argument at position n.
 func (L *LState) checkFunc(n int) *Closure {

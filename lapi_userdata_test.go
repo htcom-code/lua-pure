@@ -117,6 +117,70 @@ func TestSetUserMetatable(t *testing.T) {
 	}
 }
 
+func TestUserValues(t *testing.T) {
+	L := installPoint(t)
+	ud := L.NewUserDataUV(&point{x: 1}, 2, L.GetMetatable("Point"))
+
+	if got := ud.NumUserValues(); got != 2 {
+		t.Fatalf("NumUserValues = %d, want 2", got)
+	}
+	// Slots start nil.
+	if v, ok := ud.UserValue(1); !ok || !v.IsNil() {
+		t.Fatalf("fresh slot 1 = (%v, %v), want (nil, true)", v, ok)
+	}
+
+	if !ud.SetUserValue(2, luapure.MkString("tag")) {
+		t.Fatal("SetUserValue on an in-range slot should succeed")
+	}
+	if v, ok := ud.UserValue(2); !ok || v.Str() != "tag" {
+		t.Fatalf("slot 2 = (%v, %v), want (\"tag\", true)", v, ok)
+	}
+
+	// Out-of-range access fails without panicking, both directions.
+	if _, ok := ud.UserValue(3); ok {
+		t.Error("UserValue(3) on a 2-slot userdatum should report ok=false")
+	}
+	if ud.SetUserValue(0, luapure.True) {
+		t.Error("SetUserValue(0) should report false")
+	}
+}
+
+// The Go uservalue API and the script-facing debug.getuservalue/setuservalue
+// must see the same slots.
+func TestUserValuesDebugInterop(t *testing.T) {
+	L := installPoint(t)
+	ud := L.NewUserDataUV(&point{}, 1, L.GetMetatable("Point"))
+	ud.SetUserValue(1, luapure.Int(99))
+	L.SetGlobal("u", ud)
+
+	res, err := L.DoString(`
+		local v, ok = debug.getuservalue(u, 1)
+		debug.setuservalue(u, "changed", 1)
+		return v, ok`, "=test")
+	if err != nil {
+		t.Fatalf("debug uservalue round-trip: %v", err)
+	}
+	if res[0].AsInt() != 99 || !res[1].AsBool() {
+		t.Fatalf("getuservalue saw (%v, %v), want (99, true)", res[0], res[1])
+	}
+	// The write from Lua is visible to Go.
+	if v, _ := ud.UserValue(1); v.Str() != "changed" {
+		t.Fatalf("after setuservalue, Go sees %v, want \"changed\"", v)
+	}
+}
+
+// NewUserData (the no-slot form) yields zero uservalues.
+func TestNewUserDataHasNoUserValues(t *testing.T) {
+	L := installPoint(t)
+	ud := L.NewUserData(&point{}, L.GetMetatable("Point"))
+	if got := ud.NumUserValues(); got != 0 {
+		t.Fatalf("NewUserData NumUserValues = %d, want 0", got)
+	}
+	if _, ok := ud.UserValue(1); ok {
+		t.Error("a no-slot userdatum should have no readable uservalue")
+	}
+}
+
 // AsUserData and UserMetatable must be safe (and nil) on non-userdata values.
 func TestUserDataAccessorsOnNonUserData(t *testing.T) {
 	if luapure.Int(5).AsUserData() != nil {
