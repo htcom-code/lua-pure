@@ -1116,11 +1116,16 @@ func compileZIO(z *ZIO, name string, sizeHint int) (proto *Proto, err error) {
 	c := &compiler{source: name, envName: "_ENV"}
 	main := &Proto{Source: name}
 	// Preallocate the main chunk's growing vectors from a source-size estimate
-	// so the bytecode/lineinfo/constant slices avoid repeated reallocation
-	// (most code of a large flat chunk lives here). Rough bytes-per-item ratios.
+	// so the bytecode/lineinfo/constant/locvar/proto slices avoid repeated
+	// reallocation (most code of a large flat chunk lives here, so its LocVars
+	// and child Protos also grow from nil through many doublings). Rough
+	// bytes-per-item ratios; over-estimating only wastes a little headroom,
+	// while under-estimating still beats starting from nil.
 	main.Code = make([]Instruction, 0, sizeHint/12+8)
 	main.LineInfo = make([]int32, 0, sizeHint/12+8)
 	main.Constants = make([]Value, 0, sizeHint/60+4)
+	main.LocVars = make([]LocVar, 0, sizeHint/110+4)
+	main.Protos = make([]*Proto, 0, sizeHint/400+2)
 	p := &parser{c: c, ls: newLexStateZIO(z, name)}
 	p.mainfunc(main)
 	return main, nil
