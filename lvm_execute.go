@@ -80,11 +80,24 @@ frame:
 				up := cl.upvals[GetArgB(i)].get()
 				L.gettable(up, k[GetArgC(i)], ra)
 			case OP_GETTABLE:
+				rb := L.stack[base+GetArgB(i)]
+				rc := L.stack[base+GetArgC(i)]
+				if rc.tag == tagInt {
+					if v, ok := fastGetInt(rb, int64(rc.scalar)); ok {
+						L.stack[ra] = v
+						break
+					}
+				}
 				L.errReg = GetArgB(i)
-				L.gettable(L.stack[base+GetArgB(i)], L.stack[base+GetArgC(i)], ra)
+				L.gettable(rb, rc, ra)
 			case OP_GETI:
+				rb := L.stack[base+GetArgB(i)]
+				if v, ok := fastGetInt(rb, int64(GetArgC(i))); ok {
+					L.stack[ra] = v
+					break
+				}
 				L.errReg = GetArgB(i)
-				L.gettable(L.stack[base+GetArgB(i)], Int(int64(GetArgC(i))), ra)
+				L.gettable(rb, Int(int64(GetArgC(i))), ra)
 			case OP_GETFIELD:
 				L.errReg = GetArgB(i)
 				L.gettable(L.stack[base+GetArgB(i)], k[GetArgC(i)], ra)

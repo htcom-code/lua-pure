@@ -129,11 +129,6 @@ func normKey(v Value) (tkey, bool) {
 	}
 }
 
-// intInArray reports whether integer key k lands in the array part (1-based).
-func (t *Table) intInArray(k int64) bool {
-	return k >= 1 && k <= int64(len(t.arr))
-}
-
 // wrapVal converts a value to the form stored in this table's slots: weak
 // tables hold collectable values weakly so the GC can reclaim them. Idempotent.
 func (t *Table) wrapVal(v Value) Value {
@@ -141,6 +136,25 @@ func (t *Table) wrapVal(v Value) Value {
 		return mkWeak(v)
 	}
 	return v
+}
+
+// fastGetInt is the inlinable array-hit fast path for integer-keyed reads (PUC
+// luaV_fastgeti): it returns ok=true only when t is a table and k lands on a
+// live array slot (non-nil, non-weak). Every other case — non-table, hash key,
+// hole, weak cell, or a miss that must consult __index — returns ok=false and is
+// handled by the general gettable path. Kept tiny so it inlines into the VM
+// dispatch, sparing the hot reads two non-inlined calls (gettable + rawget).
+func fastGetInt(t Value, k int64) (Value, bool) {
+	if t.tag != tagTable {
+		return Nil, false
+	}
+	tbl := (*Table)(t.gc)
+	if u := uint64(k) - 1; u < uint64(len(tbl.arr)) {
+		if v := tbl.arr[u]; v.tag != tagNil && v.tag != tagWeakRef {
+			return v, true
+		}
+	}
+	return Nil, false
 }
 
 // rawget returns t[key] without metamethods (luaH_get).
@@ -176,11 +190,14 @@ func (t *Table) rawget(key Value) Value {
 
 // rawgetInt returns t[k] for an integer key (luaH_getint).
 func (t *Table) rawgetInt(k int64) Value {
-	if t.intInArray(k) {
-		v := t.arr[k-1]
+	// uint64(k)-1 folds the k>=1 and k<=len bounds into one unsigned compare the
+	// compiler can use to elide the slice's own bounds check (k==0 and k<0 wrap
+	// to a large value that fails the test).
+	if u := uint64(k) - 1; u < uint64(len(t.arr)) {
+		v := t.arr[u]
 		if v.tag == tagWeakRef {
 			if isDeadWeak(v) {
-				t.arr[k-1] = Nil // lazily drop the cleared entry
+				t.arr[u] = Nil // lazily drop the cleared entry
 				return Nil
 			}
 			return deref(v)
@@ -246,8 +263,8 @@ func (t *Table) rawset(key, val Value) {
 // extends it contiguously and migrating any now-contiguous hash keys.
 func (t *Table) rawsetInt(k int64, val Value) {
 	val = t.wrapVal(val) // weak tables store collectable values weakly
-	if t.intInArray(k) {
-		t.arr[k-1] = val
+	if u := uint64(k) - 1; u < uint64(len(t.arr)) { // in-array overwrite (BCE idiom)
+		t.arr[u] = val
 		return
 	}
 	if k == int64(len(t.arr))+1 && !val.IsNil() {

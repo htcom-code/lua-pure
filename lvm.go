@@ -87,6 +87,18 @@ func (L *LState) indexGet(t, key Value) Value {
 
 // settable performs t[key] = val with __newindex handling.
 func (L *LState) settable(t, key, val Value) {
+	// Fast path: a table with no metatable settles the assignment immediately —
+	// __newindex cannot fire — so skip the probe read the general loop performs
+	// only to decide between a plain set and a metamethod. newindex applies the
+	// same nil/NaN-key and array-cap checks the chained path would. (PUC's
+	// luaV_finishset stops at the first table whose metatable settles it; the
+	// no-metatable case settles on the first try.)
+	if t.IsTable() {
+		if tbl := t.tablev(); tbl.meta == nil {
+			L.newindex(tbl, key, val)
+			return
+		}
+	}
 	for loop := 0; loop < MaxTagLoop; loop++ {
 		var tm Value
 		if t.IsTable() {
