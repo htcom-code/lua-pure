@@ -18,7 +18,7 @@ import (
 	"os"
 	"path/filepath"
 
-	luapure "github.com/htcom-code/lua-pure"
+	luapure "github.com/htcom-code/lua-pure/lua"
 	"github.com/htcom-code/lua-pure/debugdap"
 )
 

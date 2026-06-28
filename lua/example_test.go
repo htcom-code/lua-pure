@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	luapure "github.com/htcom-code/lua-pure"
+	luapure "github.com/htcom-code/lua-pure/lua"
 )
 
 // Build a table in Go, hand it to a script as a global, and read the results

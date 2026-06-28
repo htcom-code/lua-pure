@@ -173,7 +173,7 @@ func TestDumpRoundTrip(t *testing.T) {
 // curated TestDumpByteIdenticalToLuac covers the same property on minimal cases.
 func TestDumpFixtures(t *testing.T) {
 	luac := luacAvailable(t)
-	files, err := filepath.Glob("_lua5.4-tests/*.lua")
+	files, err := filepath.Glob("../_lua5.4-tests/*.lua")
 	if err != nil || len(files) == 0 {
 		t.Skip("no conformance fixtures")
 	}
@@ -270,7 +270,7 @@ func firstDiff(a, b []byte) int {
 // surviving line numbers are preserved.
 func TestShebangFileLoadByteIdentity(t *testing.T) {
 	luac := luacAvailable(t)
-	for _, f := range []string{"_lua5.4-tests/all.lua", "_lua5.4-tests/main.lua"} {
+	for _, f := range []string{"../_lua5.4-tests/all.lua", "../_lua5.4-tests/main.lua"} {
 		if _, err := os.Stat(f); err != nil {
 			continue
 		}

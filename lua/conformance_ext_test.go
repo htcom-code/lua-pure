@@ -12,7 +12,7 @@ import (
 // any mismatch, so a clean DoString is the pass condition. Run under -race with
 // the rest of the package; keeps the original bugfixes from regressing on 5.4.
 func TestConformanceExtSuite(t *testing.T) {
-	files, err := filepath.Glob("_lua5.4-tests/test-ext/*.lua")
+	files, err := filepath.Glob("../_lua5.4-tests/test-ext/*.lua")
 	if err != nil {
 		t.Fatal(err)
 	}

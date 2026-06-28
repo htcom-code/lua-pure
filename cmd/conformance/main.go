@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	luapure "github.com/htcom-code/lua-pure"
+	luapure "github.com/htcom-code/lua-pure/lua"
 )
 
 // driverFiles need the full harness / internal C test library `T` / os.exit and

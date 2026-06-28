@@ -15,7 +15,23 @@ Files keep PUC's `l`-prefixed names. Where one PUC source is split across
 several Go files (Go favours smaller focused files), the parts share the PUC
 parent name with a suffix.
 
-## File map (PUC source → this package)
+## Repository layout
+
+The engine is a single Go package (one package = one directory, so it stays
+flat like PUC's `src/`; navigate it by the file map below or
+[`docs/FILEMAP.md`](docs/FILEMAP.md)). Add-ons that build on its public API are
+separate packages.
+
+| path | package | what |
+|---|---|---|
+| `lua/` | `luapure` — import `github.com/htcom-code/lua-pure/lua` | the engine: VM, compiler, libraries, embedding API |
+| `debugmcp/` | `debugmcp` | debug server over the Model Context Protocol (stdio + HTTP) |
+| `debugdap/` | `debugdap` | debug server over the Debug Adapter Protocol (TCP) |
+| `cmd/conformance/` | `main` | runs the Lua 5.4 conformance suite |
+| `cmd/luadbg-mcp/`, `cmd/luadbg-dap/` | `main` | standalone debug-server binaries |
+| `_lua5.4-tests/` | — | the official Lua 5.4 test suite (fixtures) |
+
+## File map (PUC source → `lua/`)
 
 | PUC source | this package | notes |
 |---|---|---|

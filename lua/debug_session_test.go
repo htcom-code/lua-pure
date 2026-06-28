@@ -3,7 +3,7 @@ package luapure_test
 import (
 	"testing"
 
-	luapure "github.com/htcom-code/lua-pure"
+	luapure "github.com/htcom-code/lua-pure/lua"
 )
 
 const dbgProg = `local function add(a, b)

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	luapure "github.com/htcom-code/lua-pure"
+	luapure "github.com/htcom-code/lua-pure/lua"
 )
 
 // dapClient drives an adapter over a pipe, demultiplexing async events from

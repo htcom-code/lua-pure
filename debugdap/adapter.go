@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"sync"
 
-	luapure "github.com/htcom-code/lua-pure"
+	luapure "github.com/htcom-code/lua-pure/lua"
 )
 
 // Config configures a DAP session.

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"sync"
 
-	luapure "github.com/htcom-code/lua-pure"
+	luapure "github.com/htcom-code/lua-pure/lua"
 )
 
 // Server exposes a luapure debug session over MCP. Construct it with a state

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	luapure "github.com/htcom-code/lua-pure"
+	luapure "github.com/htcom-code/lua-pure/lua"
 )
 
 // The full front-end flow when the script lives only on the server: the

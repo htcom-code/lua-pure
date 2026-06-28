@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	luapure "github.com/htcom-code/lua-pure"
+	luapure "github.com/htcom-code/lua-pure/lua"
 )
 
 func testNewState() *luapure.LState {

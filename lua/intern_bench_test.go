@@ -11,7 +11,7 @@ import (
 // compile benchmark exercises a realistic, string-constant-heavy program.
 func bigSource(b *testing.B) string {
 	b.Helper()
-	files, _ := filepath.Glob("_lua5.4-tests/*.lua")
+	files, _ := filepath.Glob("../_lua5.4-tests/*.lua")
 	var sb strings.Builder
 	for _, f := range files {
 		src, err := os.ReadFile(f)

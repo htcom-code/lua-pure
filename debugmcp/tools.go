@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	luapure "github.com/htcom-code/lua-pure"
+	luapure "github.com/htcom-code/lua-pure/lua"
 )
 
 // toolHandler runs a tool. A non-empty second return is a tool-level error

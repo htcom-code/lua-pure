@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	luapure "github.com/htcom-code/lua-pure"
+	luapure "github.com/htcom-code/lua-pure/lua"
 )
 
 type point struct{ x, y int64 }

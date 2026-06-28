@@ -5,7 +5,7 @@ import (
 	"io"
 	"testing"
 
-	luapure "github.com/htcom-code/lua-pure"
+	luapure "github.com/htcom-code/lua-pure/lua"
 )
 
 // chanTransport is an in-memory Transport for tests: requests go in, responses
