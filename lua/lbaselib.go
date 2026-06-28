@@ -40,7 +40,8 @@ func (L *LState) OpenBase() {
 		"warn":           baseWarn,
 	})
 	g.rawset(MkString("_G"), mkTable(g))
-	g.rawset(MkString("_VERSION"), MkString("Lua 5.4"))
+	g.rawset(MkString("_VERSION"), MkString(LuaVersion))
+	g.rawset(MkString("_LUAPURE_VERSION"), MkString(VersionString()))
 }
 
 func basePrint(L *LState) int {

@@ -1,35 +1,67 @@
 # LuaPure — a pure Go Lua VM
 
-📖 **Docs:** `make doc-web` serves the API reference locally (pkgsite, the
-pkg.go.dev engine); `make doc` prints it as text. The repository is private, so
-there is no public pkg.go.dev page yet.
+[![Go Reference](https://pkg.go.dev/badge/github.com/htcom-code/lua-pure/lua.svg)](https://pkg.go.dev/github.com/htcom-code/lua-pure/lua)
+[![Go 1.24+](https://img.shields.io/badge/Go-1.24%2B-00ADD8.svg)](go.mod)
+[![Lua 5.4.8](https://img.shields.io/badge/Lua-5.4.8-000080.svg)](https://www.lua.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](#project-status)
 
-`luapure` is a pure-Go implementation of **PUC-Lua 5.4**: its instruction set,
-single-pass compiler, virtual machine, standard libraries, and semantics are
-ported directly from the reference C sources (`lua-5.4.8/src`). It is written
-from scratch against those sources and shares no code with any other engine.
+`luapure` is a pure-Go implementation of **PUC-Lua 5.4** — no cgo, no bundled C.
+Its instruction set, single-pass compiler, virtual machine, standard libraries,
+and semantics are ported directly from the reference C sources (`lua-5.4.8/src`),
+written from scratch against them, sharing no code with any other engine. The
+standard-library surface and observable behaviour match a stock PUC-Lua 5.4.8
+build, gated by the official Lua 5.4 test suite.
 
-- Front end: single-pass recursive-descent lexer + parser fused with code
-  generation (no AST), mirroring PUC's `llex.c`/`lparser.c`/`lcode.c`.
-- Conformance harness: `go run ./cmd/conformance` (runs the official Lua 5.4
-  test suite in `_lua5.4-tests/`).
-- Requires Go 1.24 (uses the `weak` package for weak tables).
+## Features
 
-Files keep PUC's `l`-prefixed names. Where one PUC source is split across
-several Go files (Go favours smaller focused files), the parts share the PUC
-parent name with a suffix.
+- **Pure Go, zero cgo** — `go build` cross-compiles anywhere Go does; no C
+  toolchain, no `lua.h`, no linker flags.
+- **Faithful PUC-Lua 5.4.8** — same bytecode, error messages, and edge cases;
+  loads/emits `luac 5.4.8` binary chunks byte-for-byte on a 64-bit LE host.
+- **Complete 5.4 standard library** — `base`, `package`, `string`, `table`,
+  `math`, `os`, `io`, `coroutine`, `utf8`, `debug`.
+- **Go-native embedding surface PUC lacks** — per-`State` functional options,
+  `context.Context` cancellation, an instruction budget, configurable memory
+  caps, host-module registration, and userdata.
+- **Sandboxing** — confine untrusted scripts to safe libraries with a single
+  option (`WithSandbox`); see [`SECURITY.md`](SECURITY.md).
+- **Built-in debugger** — in-process breakpoints/stepping plus standalone debug
+  servers over MCP (`debugmcp/`) and DAP (`debugdap/`).
 
-See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) for how it differs from PUC,
-[`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) for cross-engine speed,
-[`ROADMAP.md`](ROADMAP.md) for what tracks next (PUC-Lua 5.5),
-[`CONTRIBUTING.md`](CONTRIBUTING.md) for the port discipline and test gate, and
-[`CHANGELOG.md`](CHANGELOG.md) for release history.
+## Why luapure
+
+| library | Lua version | cgo / C toolchain |
+|---|---|---|
+| [gopher-lua](https://github.com/yuin/gopher-lua) | 5.1 | no |
+| [Shopify/go-lua](https://github.com/Shopify/go-lua) | 5.2 | no |
+| cgo bindings (golua, etc.) | real Lua 5.x | **yes** |
+| **luapure** | **5.4.8** | **no** |
+
+If you want current Lua (5.4) semantics *and* a single static Go binary with no
+C toolchain, luapure is the gap the table above shows.
+
+## Performance
+
+Pure Go costs roughly **1.3–1.6× PUC on table/string work and ~2.45× on a tight
+arithmetic loop** — measured back-to-back against the C interpreter, with no
+cgo. See [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) for the full cross-engine
+numbers (PUC vs cgo bindings vs luapure) and methodology.
+
+## Project status
+
+Pre-1.0 (`v0.1.0`, alpha). The Lua language surface tracks PUC-Lua 5.4.8 and is
+stable; the **Go embedding API may still change** before a 1.0 tag. Pin a commit
+or tag if you depend on it. [`ROADMAP.md`](ROADMAP.md) tracks what comes next
+(PUC-Lua 5.5).
 
 ## Install
 
 ```sh
 go get github.com/htcom-code/lua-pure/lua
 ```
+
+Requires Go 1.24 (uses the `weak` package for weak tables).
 
 ## Quickstart
 
@@ -80,14 +112,30 @@ defaults.
 
 Standalone runnable programs are in [`examples/`](examples/) (`go run
 ./examples/<name>`); smaller doc-integrated snippets are the `Example` functions
-in [`lua/example_test.go`](lua/example_test.go), which render in `make doc-web`.
+in [`lua/example_test.go`](lua/example_test.go), which render on pkg.go.dev.
+
+## Concurrency
+
+An `LState` is a **single execution context**: drive each one from a single
+goroutine at a time, and never share a *running* state across goroutines.
+Coroutines are internal goroutines that hand off over channels, so exactly one
+runs at any instant — there is no parallelism *inside* a state to exploit, and
+concurrent external access would race.
+
+`NewState` itself **is safe to call concurrently** (verified under `-race`), so
+the idiomatic way to use many cores is a **pool of states** — one per worker
+goroutine — rather than one shared state. The exported version identifiers
+`luapure.Version` / `luapure.VersionString()` (and the Lua globals `_VERSION`,
+`_LUAPURE_VERSION`) report the engine build.
 
 ## Repository layout
 
 The engine is a single Go package (one package = one directory, so it stays
 flat like PUC's `src/`; navigate it by [`docs/FILEMAP.md`](docs/FILEMAP.md),
-which carries the full PUC source → Go file map and a functional index).
-Add-ons that build on its public API are separate packages.
+which carries the full PUC source → Go file map and a functional index). Files
+keep PUC's `l`-prefixed names; where one PUC source is split across several Go
+files (Go favours smaller focused files), the parts share the PUC parent name
+with a suffix. Add-ons that build on its public API are separate packages.
 
 | path | package | what |
 |---|---|---|
@@ -113,6 +161,21 @@ instruction budget, sandboxing, host-module registration, a debugger).
 
 [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) is the full, categorized list.
 
+## Documentation
+
+- [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) — how it differs from PUC
+- [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) — cross-engine speed
+- [`docs/FILEMAP.md`](docs/FILEMAP.md) — PUC source → Go file map
+- [`ROADMAP.md`](ROADMAP.md) — what tracks next (PUC-Lua 5.5)
+- [`SECURITY.md`](SECURITY.md) — sandboxing and the threat model
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — the port discipline and test gate
+- [`CHANGELOG.md`](CHANGELOG.md) — release history
+- [pkg.go.dev](https://pkg.go.dev/github.com/htcom-code/lua-pure/lua) — API
+  reference (or `make doc-web` to serve it locally; `make doc` for text)
+
+The conformance harness is `go run ./cmd/conformance` (runs the official Lua 5.4
+test suite in `_lua5.4-tests/`).
+
 ## License & attribution
 
 luapure is a derivative work — a Go port of **PUC-Lua 5.4**. The language,
@@ -124,4 +187,4 @@ MIT, as is this project; its copyright notice is retained.
   — full notice in [`LICENSE-Lua`](LICENSE-Lua) (the engine is ported from it).
 - **luapure**: the Go port and Go-native adaptations, MIT — see [`LICENSE`](LICENSE).
 
-All three are MIT and compatible.
+Both are MIT and compatible.

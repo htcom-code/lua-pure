@@ -22,6 +22,27 @@ package luapure
 // State to carry per-instance config; they are not validated (PUC validates
 // none), so a nonsensical value there yields undefined behavior.
 
+// --- Version (single source of truth) ---
+
+// Version identifiers. LuaVersion is the language version exposed to Lua as the
+// global _VERSION; it mirrors PUC's LUA_VERSION exactly ("Lua 5.4") and must
+// never carry an implementation suffix, since scripts and libraries compare it
+// for exact equality (the PUC test suite's all.lua bails out on _VERSION ~=
+// "Lua 5.4"). The luapure implementation version is exposed separately, both
+// here and to Lua via the _LUAPURE_VERSION global.
+const (
+	LuaVersion = "Lua 5.4" // == _VERSION; PUC LUA_VERSION (DO NOT CHANGE)
+	LuaRelease = "5.4.8"    // PUC patch level this engine tracks
+	Version    = "0.1.0"    // luapure implementation version
+)
+
+// VersionString returns the full implementation banner, e.g.
+// "luapure 0.1.0 (Lua 5.4.8)". It is the value exposed to Lua as the global
+// _LUAPURE_VERSION.
+func VersionString() string {
+	return "luapure " + Version + " (Lua " + LuaRelease + ")"
+}
+
 // --- Tunable limits (settable; defaults match stock PUC luaconf.h) ---
 
 var (
