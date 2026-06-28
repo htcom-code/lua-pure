@@ -90,4 +90,5 @@ use `package luapure` and stay here in `lua/`; black-box tests and runnable
 examples use `package luapure_test`. The conformance suite is public-API-only,
 so it lives in its own `conformance/` package (not in `lua/`), alongside the
 `cmd/conformance` driver. The official fixtures are at repo root in
-`_lua5.4-tests/` (reached from a sub-package via `../_lua5.4-tests/`).
+`_lua5.4-tests/`, and the extra self-asserting probes in `_glue5.4-tests/`
+(reached from a sub-package via `../_lua5.4-tests/` and `../_glue5.4-tests/`).
