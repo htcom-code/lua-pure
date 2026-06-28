@@ -2,6 +2,7 @@ package luapure
 
 import (
 	"math"
+	"sync/atomic"
 	"time"
 )
 
@@ -211,14 +212,16 @@ func mathMin(L *LState) int {
 type rngState struct{ s [4]uint64 }
 
 // rngSeedCounter perturbs the second auto-seed word so distinct states diverge
-// (PUC mixes in the lua_State address; we lack a stable pointer value).
+// (PUC mixes in the lua_State address; we lack a stable pointer value). It is
+// bumped atomically because NewState — which calls newRNG — may run on several
+// goroutines at once (e.g. a State pool), and a plain ++ would data-race.
 var rngSeedCounter uint64
 
 // newRNG builds an auto-seeded generator (PUC randseed: time + address).
 func newRNG() *rngState {
 	r := &rngState{}
-	rngSeedCounter++
-	r.setseed(uint64(time.Now().UnixNano()), rngSeedCounter)
+	seq := atomic.AddUint64(&rngSeedCounter, 1)
+	r.setseed(uint64(time.Now().UnixNano()), seq)
 	return r
 }
 
