@@ -373,7 +373,7 @@ func newMatchState(L *LState, s, p string) *matchState {
 
 // --- the four pattern functions ---
 
-func strFind(L *LState) int { return strFindAux(L, true) }
+func strFind(L *LState) int  { return strFindAux(L, true) }
 func strMatch(L *LState) int { return strFindAux(L, false) }
 
 func strFindAux(L *LState, find bool) int {

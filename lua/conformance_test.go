@@ -41,13 +41,13 @@ func TestConformanceIntegerFloatSubtype(t *testing.T) {
 
 func TestConformanceArithModulo(t *testing.T) {
 	cases := map[string]string{
-		"floored_mod_neg":   `(-5) % 3 == 1 and 5 % (-3) == -1`,
-		"float_mod":         `5.5 % 2 == 1.5`,
-		"idiv_floors":       `(-7) // 2 == -4`,
-		"unary_minus_int":   `math.type(-(3)) == "integer"`,
-		"bitwise_and_int":   `0xF0 & 0x0F == 0 and 0xFF & 0x0F == 0x0F`,
-		"shift":             `1 << 62 == 4611686018427387904 and (-1) >> 63 == 1`,
-		"bnot":              `~0 == -1 and ~5 == -6`,
+		"floored_mod_neg": `(-5) % 3 == 1 and 5 % (-3) == -1`,
+		"float_mod":       `5.5 % 2 == 1.5`,
+		"idiv_floors":     `(-7) // 2 == -4`,
+		"unary_minus_int": `math.type(-(3)) == "integer"`,
+		"bitwise_and_int": `0xF0 & 0x0F == 0 and 0xFF & 0x0F == 0x0F`,
+		"shift":           `1 << 62 == 4611686018427387904 and (-1) >> 63 == 1`,
+		"bnot":            `~0 == -1 and ~5 == -6`,
 	}
 	for name, src := range cases {
 		assertLua(t, name, src)
@@ -73,11 +73,11 @@ func TestConformanceStringPatterns(t *testing.T) {
 
 func TestConformanceControlFlow(t *testing.T) {
 	cases := map[string]string{
-		"goto_forward": `(function() local x = 0; goto skip; x = 1; ::skip:: return x end)() == 0`,
+		"goto_forward":      `(function() local x = 0; goto skip; x = 1; ::skip:: return x end)() == 0`,
 		"numeric_for_count": `(function() local n = 0; for i = 1, 10 do n = n + 1 end; return n end)() == 10`,
-		"for_no_run":   `(function() local n = 0; for i = 5, 1 do n = n + 1 end; return n end)() == 0`,
-		"nested_break": `(function() local n=0; for i=1,3 do for j=1,3 do if j==2 then break end; n=n+1 end end; return n end)() == 3`,
-		"and_or":       `(1 and 2) == 2 and (nil or 3) == 3 and (false and 1) == false`,
+		"for_no_run":        `(function() local n = 0; for i = 5, 1 do n = n + 1 end; return n end)() == 0`,
+		"nested_break":      `(function() local n=0; for i=1,3 do for j=1,3 do if j==2 then break end; n=n+1 end end; return n end)() == 3`,
+		"and_or":            `(1 and 2) == 2 and (nil or 3) == 3 and (false and 1) == false`,
 	}
 	for name, src := range cases {
 		assertLua(t, name, src)
@@ -103,9 +103,9 @@ func TestConformanceLibraryIdentities(t *testing.T) {
 	L := NewState()
 	L.OpenLibs()
 	cases := map[string]string{
-		"ipairs_identity":      `ipairs({}) == ipairs({})`,
-		"next_identity":        `(function() local n1 = next; return n1 == next end)()`,
-		"protected_metatable":  `(function()
+		"ipairs_identity": `ipairs({}) == ipairs({})`,
+		"next_identity":   `(function() local n1 = next; return n1 == next end)()`,
+		"protected_metatable": `(function()
 			local a = setmetatable({}, {__metatable = "locked"})
 			return getmetatable(a) == "locked" and pcall(setmetatable, a, {}) == false
 		end)()`,
@@ -124,9 +124,9 @@ func TestConformanceLibraryIdentities(t *testing.T) {
 
 func TestConformanceTablesAndMeta(t *testing.T) {
 	cases := map[string]string{
-		"length_border":    `#({1,2,3,nil}) >= 0 and #({1,2,3}) == 3`,
-		"float_key_int":     `(function() local t={}; t[2.0]=5; return t[2] end)() == 5`,
-		"index_chain":       `(function()
+		"length_border": `#({1,2,3,nil}) >= 0 and #({1,2,3}) == 3`,
+		"float_key_int": `(function() local t={}; t[2.0]=5; return t[2] end)() == 5`,
+		"index_chain": `(function()
 			local base = {x = 1}
 			local mid = setmetatable({}, {__index = base})
 			local t = setmetatable({}, {__index = mid})

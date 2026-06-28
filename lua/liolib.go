@@ -56,10 +56,10 @@ func (lf *luaFile) flushWrite() error {
 func (L *LState) OpenIO() {
 	fileMethods := newTable()
 	setFuncs(fileMethods, map[string]GoFunc{
-		"read":  fileRead,
-		"write": fileWrite,
-		"lines": fileLines,
-		"close": fileClose,
+		"read":    fileRead,
+		"write":   fileWrite,
+		"lines":   fileLines,
+		"close":   fileClose,
 		"seek":    fileSeek,
 		"flush":   fileFlush,
 		"setvbuf": fileSetvbuf,
@@ -89,12 +89,12 @@ func (L *LState) OpenIO() {
 		"read":    ioRead,
 		"open":    ioOpen,
 		"tmpfile": ioTmpfile,
-		"lines":  ioLines,
-		"close":  ioClose,
-		"type":   ioType,
-		"input":  ioInput,
-		"output": ioOutput,
-		"flush":  ioFlush,
+		"lines":   ioLines,
+		"close":   ioClose,
+		"type":    ioType,
+		"input":   ioInput,
+		"output":  ioOutput,
+		"flush":   ioFlush,
 	})
 	t.rawset(MkString("stdout"), stdout)
 	t.rawset(MkString("stderr"), stderr)

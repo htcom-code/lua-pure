@@ -40,11 +40,11 @@ type LState struct {
 	// hook above: a debugger installs a Go callback rather than a Lua closure.
 	// Fired from the same points as the Lua hook, gated on its own mask/count,
 	// and runs inline on the executing goroutine (no extra Lua frame).
-	goHook      GoHook
-	goHookMask  int
-	goHookCount int
-	goHookCdown int
-	pendingFinMark  bool  // tag the next frame created as a __gc finalizer (CIST_FIN)
+	goHook         GoHook
+	goHookMask     int
+	goHookCount    int
+	goHookCdown    int
+	pendingFinMark bool // tag the next frame created as a __gc finalizer (CIST_FIN)
 
 	nCcalls    int // nested Go-level call depth (LUAI_MAXCCALLS guard)
 	errReg     int // register of the value a failing opcode operated on (-1 = none)

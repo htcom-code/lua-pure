@@ -513,7 +513,7 @@ var priority = [...]struct{ left, right int }{
 	OPR_BAND: {6, 6}, OPR_BOR: {4, 4}, OPR_BXOR: {5, 5},
 	OPR_SHL: {7, 7}, OPR_SHR: {7, 7},
 	OPR_CONCAT: {9, 8},
-	OPR_EQ: {3, 3}, OPR_LT: {3, 3}, OPR_LE: {3, 3},
+	OPR_EQ:     {3, 3}, OPR_LT: {3, 3}, OPR_LE: {3, 3},
 	OPR_NE: {3, 3}, OPR_GT: {3, 3}, OPR_GE: {3, 3},
 	OPR_AND: {2, 2}, OPR_OR: {1, 1},
 }

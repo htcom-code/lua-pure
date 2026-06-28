@@ -130,7 +130,7 @@ func dbgGetinfo(L *LState) int {
 	} else {
 		L.typeArgError(arg, "function or level")
 	}
-	if L.Arg(arg+1).IsString() {
+	if L.Arg(arg + 1).IsString() {
 		what = L.Arg(arg + 1).Str()
 	}
 	for _, c := range what {

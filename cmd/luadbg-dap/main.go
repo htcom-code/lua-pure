@@ -18,8 +18,8 @@ import (
 	"os"
 	"path/filepath"
 
-	luapure "github.com/htcom-code/lua-pure/lua"
 	"github.com/htcom-code/lua-pure/debugdap"
+	luapure "github.com/htcom-code/lua-pure/lua"
 )
 
 func main() {

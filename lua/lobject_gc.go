@@ -34,7 +34,7 @@ type userData struct {
 	data   interface{}
 	meta   *Table
 	uv     []Value // associated Lua values (lua_getiuservalue / setiuservalue)
-	finReg bool     // a Go finalizer for __gc has been attached (PUC FINALIZEDBIT)
+	finReg bool    // a Go finalizer for __gc has been attached (PUC FINALIZEDBIT)
 }
 
 func mkUserData(u *userData) Value { return Value{tag: tagUserData, gc: unsafe.Pointer(u)} }

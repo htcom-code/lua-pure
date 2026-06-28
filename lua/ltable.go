@@ -262,7 +262,7 @@ func (t *Table) rawset(key, val Value) {
 // rawsetInt assigns an integer-keyed slot, growing the array part when the key
 // extends it contiguously and migrating any now-contiguous hash keys.
 func (t *Table) rawsetInt(k int64, val Value) {
-	val = t.wrapVal(val) // weak tables store collectable values weakly
+	val = t.wrapVal(val)                            // weak tables store collectable values weakly
 	if u := uint64(k) - 1; u < uint64(len(t.arr)) { // in-array overwrite (BCE idiom)
 		t.arr[u] = val
 		return

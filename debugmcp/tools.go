@@ -148,7 +148,9 @@ func toolLaunch(s *Server, args map[string]any) (any, string) {
 	return s.waitFor(sess, done), ""
 }
 
-func toolContinue(s *Server, args map[string]any) (any, string) { return s.resumeAndWait((*luapure.Session).Continue) }
+func toolContinue(s *Server, args map[string]any) (any, string) {
+	return s.resumeAndWait((*luapure.Session).Continue)
+}
 
 func toolStep(step func(*luapure.Session)) toolHandler {
 	return func(s *Server, args map[string]any) (any, string) { return s.resumeAndWait(step) }

@@ -456,7 +456,7 @@ func (L *LState) forprep(ra int) bool {
 			}
 		} else {
 			count = uint64(init) - uint64(limit)
-			count /= uint64(-(step+1)) + 1
+			count /= uint64(-(step + 1)) + 1
 		}
 		L.stack[ra+1] = Int(int64(count)) // counter replaces the limit
 		return false
@@ -558,16 +558,16 @@ func arithBit(v1, v2 Value, bop func(int64, int64) int64) (Value, bool) {
 }
 
 // raw arithmetic functions used by the opcodes (llimits.h intop / luai_num*).
-func fAdd(a, b float64) float64 { return a + b }
-func fSub(a, b float64) float64 { return a - b }
-func fMul(a, b float64) float64 { return a * b }
-func fDiv(a, b float64) float64 { return a / b }
-func fPow(a, b float64) float64 { return math.Pow(a, b) }
+func fAdd(a, b float64) float64  { return a + b }
+func fSub(a, b float64) float64  { return a - b }
+func fMul(a, b float64) float64  { return a * b }
+func fDiv(a, b float64) float64  { return a / b }
+func fPow(a, b float64) float64  { return math.Pow(a, b) }
 func fIDiv(a, b float64) float64 { return math.Floor(a / b) }
 
-func iAdd(a, b int64) int64 { return int64(uint64(a) + uint64(b)) }
-func iSub(a, b int64) int64 { return int64(uint64(a) - uint64(b)) }
-func iMul(a, b int64) int64 { return int64(uint64(a) * uint64(b)) }
+func iAdd(a, b int64) int64  { return int64(uint64(a) + uint64(b)) }
+func iSub(a, b int64) int64  { return int64(uint64(a) - uint64(b)) }
+func iMul(a, b int64) int64  { return int64(uint64(a) * uint64(b)) }
 func iBAnd(a, b int64) int64 { return a & b }
 func iBOr(a, b int64) int64  { return a | b }
 func iBXor(a, b int64) int64 { return a ^ b }
