@@ -43,17 +43,14 @@ unwinding, coroutines, memory-limit caps).
 
 ## Known limits (won't-fix on the 5.4 line)
 
-These are structural consequences of being a Go-native, embeddable VM, not gaps
-to close:
+Structural consequences of being a Go-native, embeddable VM, not gaps to close:
+`collectgarbage("count"/"step")` accounting (Go owns the heap), `io.popen` and
+dynamic C library loading (host/OS-dependent). These cap conformance at **30/33**
+— every official test file that *can* pass, passes (`gc.lua`, the
+process-dependent tail of `files.lua`, and the `all.lua`/`main.lua` drivers are
+the three that cannot).
 
-- **`gc.lua`** — exercises `collectgarbage("count"/"step")` byte accounting. GC
-  is delegated to the Go runtime, which owns the heap, so exact Lua-side
-  accounting isn't available.
-- **`files.lua` (process-dependent tail)** — `os.execute`/`io.popen` and
-  seekable-stdin assumptions depend on the host process/OS, not the VM.
-- **`all.lua` / `main.lua`** — driver scripts, not behavioural fixtures.
-
-→ 30/33 is "every file that *can* pass, passes."
+Full detail in [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md).
 
 ## Planned / under consideration (5.4 line)
 

@@ -19,7 +19,8 @@ Files keep PUC's `l`-prefixed names. Where one PUC source is split across
 several Go files (Go favours smaller focused files), the parts share the PUC
 parent name with a suffix.
 
-See [`ROADMAP.md`](ROADMAP.md) for what tracks next (PUC-Lua 5.5),
+See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) for how it differs from PUC,
+[`ROADMAP.md`](ROADMAP.md) for what tracks next (PUC-Lua 5.5),
 [`CONTRIBUTING.md`](CONTRIBUTING.md) for the port discipline and test gate, and
 [`CHANGELOG.md`](CHANGELOG.md) for release history.
 
@@ -97,28 +98,17 @@ Add-ons that build on its public API are separate packages.
 | `_lua5.4-tests/` | — | the official Lua 5.4 test suite (fixtures) |
 | `_glue5.4-tests/` | — | extra self-asserting probes pinned to PUC 5.4 oracle values, run by the ext suite |
 
-## Intentional divergences from PUC (same observable behavior)
+## Differences from PUC
 
-These are deliberate structural choices; observable semantics, error messages,
-and edge cases are still matched against the PUC sources.
+The standard-library surface and observable semantics match a stock PUC-Lua
+5.4.8 build. The deliberate divergences are structural — GC delegated to the Go
+runtime, a tagged-struct `Value` (not NaN-boxing), `panic`/`recover` error
+unwinding, goroutine coroutines, and configurable memory-limit caps — and a few
+host-dependent gaps (`io.popen`, dynamic C library loading). luapure also adds a
+Go-native embedding surface PUC lacks (per-State options, context cancellation,
+instruction budget, sandboxing, host-module registration, a debugger).
 
-- **GC** is delegated to the Go runtime (no `lmem`/incremental collector). Weak
-  tables use `weak.Pointer` (Go 1.24); `__gc` uses `runtime.SetFinalizer` plus a
-  main-thread drain queue. `collectgarbage` drives `runtime.GC()`.
-- **`Value`** is a tagged struct (tag + inline scalar + GC pointer), not
-  NaN-boxing — Go's precise GC must be able to follow pointers.
-- **Errors** unwind via `panic`/`recover` instead of `longjmp`.
-- **Coroutines** are goroutines handing off over channels (so a yield can cross
-  a Go/"C" frame, e.g. inside a metamethod).
-- **Binary chunks** use PUC-Lua 5.4's exact precompiled-chunk format (a port of
-  `ldump.c`/`lundump.c`): a dump is byte-identical to `luac 5.4.8` on a 64-bit
-  little-endian host, and luapure loads `luac` output and vice versa. (Internally
-  luapure keeps absolute line numbers; dump recompresses them to PUC's
-  `lineinfo`/`abslineinfo` and undump restores them.)
-- **Memory-limit caps** (configurable `MaxTableArraySize`, `MaxLexElement`,
-  constant count): Go cannot turn an allocation failure into a catchable error
-  (OOM is a fatal runtime throw), so these size checks stand in for PUC's
-  malloc-failure path. Default off; the conformance runner sets them.
+[`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) is the full, categorized list.
 
 ## License & attribution
 
