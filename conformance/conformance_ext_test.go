@@ -9,10 +9,11 @@ import (
 )
 
 // Extended PUC-conformance regression suite: the self-asserting Lua scripts in
-// _glue5.4-tests/ (ported from the gopher-lua bugfix probes and pinned to PUC
-// Lua 5.4 oracle values). Each script raises a Lua error via assert() on any
+// _glue5.4-tests/, pinned to PUC Lua 5.4 oracle values, covering behaviours
+// that are easy to get subtly wrong (error messages, number formatting,
+// coercions, GC counts, …). Each script raises a Lua error via assert() on any
 // mismatch, so a clean DoString is the pass condition. Run under -race with the
-// rest of the package; keeps the original bugfixes from regressing on 5.4.
+// rest of the package to keep these behaviours from regressing.
 func TestConformanceExtSuite(t *testing.T) {
 	files, err := filepath.Glob("../_glue5.4-tests/*.lua")
 	if err != nil {

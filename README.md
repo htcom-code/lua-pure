@@ -31,7 +31,7 @@ separate packages.
 | `cmd/conformance/` | `main` | standalone driver that runs the official `_lua5.4-tests/` fixtures |
 | `cmd/luadbg-mcp/`, `cmd/luadbg-dap/` | `main` | standalone debug-server binaries |
 | `_lua5.4-tests/` | — | the official Lua 5.4 test suite (fixtures) |
-| `_glue5.4-tests/` | — | extra self-asserting probes (gopher-lua bugfixes, pinned to PUC 5.4) run by the ext suite |
+| `_glue5.4-tests/` | — | extra self-asserting probes pinned to PUC 5.4 oracle values, run by the ext suite |
 
 ## File map (PUC source → `lua/`)
 
