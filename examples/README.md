@@ -16,6 +16,7 @@ Run one with `go run ./examples/<name>`:
 | [`channel-timeout`](channel-timeout/) | cancellable channel `recv` via `L.Context()` + a `SetContext` deadline |
 | [`openlib`](openlib/) | write a library that installs like a built-in (`OpenString`-style): a free `OpenX(L)` opener that exposes Go helpers as a global |
 | [`customlib`](customlib/) | register host modules with `Requiref` (eager) and `Preload` (lazy) |
+| [`debugger`](debugger/) | in-process `Debugger`: set a breakpoint, inspect the frame, `Eval` in scope, resume |
 
 For small, doc-integrated snippets see the runnable `Example` functions in
 [`lua/example_test.go`](../lua/example_test.go) (they render in `make doc-web`).
