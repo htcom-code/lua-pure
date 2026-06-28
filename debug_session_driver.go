@@ -58,11 +58,15 @@ type FrameInfo struct {
 	What   string // namewhat: "local", "global", "method", "" ...
 }
 
-// Var is a rendered variable binding (Session.Variables).
+// Var is a rendered variable binding (Session.Variables). Raw carries the
+// underlying value so a front end can render it differently or expand a table
+// into its fields (e.g. a DAP variablesReference tree); it is valid only while
+// the program is paused at the stop the Var was read from.
 type Var struct {
 	Name  string
 	Value string // display rendering of the value
 	Kind  string // "local" | "upvalue" | "vararg"
+	Raw   Value
 }
 
 type sessReq struct {
@@ -147,21 +151,21 @@ func (s *Session) Variables(level int) []Var {
 			return
 		}
 		for _, lv := range f.Locals() {
-			out = append(out, Var{Name: lv.Name, Value: renderValue(lv.Value), Kind: "local"})
+			out = append(out, Var{Name: lv.Name, Value: renderValue(lv.Value), Kind: "local", Raw: lv.Value})
 		}
 		for n := 1; ; n++ {
 			nm, v, ok := f.Upvalue(n)
 			if !ok {
 				break
 			}
-			out = append(out, Var{Name: nm, Value: renderValue(v), Kind: "upvalue"})
+			out = append(out, Var{Name: nm, Value: renderValue(v), Kind: "upvalue", Raw: v})
 		}
 		for n := 1; ; n++ {
 			v, ok := f.Vararg(n)
 			if !ok {
 				break
 			}
-			out = append(out, Var{Name: fmt.Sprintf("(vararg %d)", n), Value: renderValue(v), Kind: "vararg"})
+			out = append(out, Var{Name: fmt.Sprintf("(vararg %d)", n), Value: renderValue(v), Kind: "vararg", Raw: v})
 		}
 	})
 	return out
