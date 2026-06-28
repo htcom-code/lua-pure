@@ -41,6 +41,16 @@ frame:
 						L.throw(MkString("execution cancelled: " + err.Error()))
 					}
 				}
+				// Instruction budget (SetInstructionLimit): same gate, so the
+				// per-instruction cost stays a bare counter increment. Advances
+				// by finGCPoll (the cap's granularity) and raises a catchable
+				// error once the allowance is spent.
+				if b := L.budget; b != nil {
+					b.count += finGCPoll
+					if b.count >= b.limit {
+						L.throw(MkString(instrLimitMsg))
+					}
+				}
 			}
 			L.errReg = -1 // operand register for name-aware type errors
 			L.errUpval = -1

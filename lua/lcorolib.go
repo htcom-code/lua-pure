@@ -52,7 +52,8 @@ func (L *LState) newThread() *LState {
 		pkgLoaded: L.pkgLoaded,
 		pkgTable:  L.pkgTable,
 		basicMT:   L.basicMT,
-		cfg:       L.cfg, // inherit the parent's per-State limits
+		cfg:       L.cfg,    // inherit the parent's per-State limits
+		budget:    L.budget, // share the instruction budget (no multiplying via spawns)
 		allowHook: true,
 		errReg:    -1,
 		errUpval:  -1,

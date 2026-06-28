@@ -14,6 +14,48 @@ import "context"
 // blocking Go call (e.g. a long io read).
 func (L *LState) SetContext(ctx context.Context) { L.ctx = ctx }
 
+// instrLimitMsg is the error raised when an instruction budget is exceeded; the
+// host maps it (e.g. to a typed ErrInstructionLimit) by matching this text.
+const instrLimitMsg = "instruction limit exceeded"
+
+// execBudget caps executed instructions. count is advanced at the
+// finalizer-poll gate, so it is a multiple of finGCPoll (the cap's granularity).
+type execBudget struct {
+	limit uint64
+	count uint64
+}
+
+// SetInstructionLimit caps how many bytecode instructions this state (and the
+// coroutines it spawns, which share the budget) may execute before the VM
+// raises a catchable "instruction limit exceeded" error. It is a host-only
+// guard against runaway pure-Lua CPU, orthogonal to SetContext's wall-clock
+// cancellation: set ExecTimeout-style deadlines with SetContext and a CPU cap
+// here. n == 0 disables it. Setting a limit resets the counter, so call it once
+// per run (like SetContext). The cap is enforced at the finalizer-poll gate, so
+// its granularity is finGCPoll instructions, not exact.
+//
+// It is deliberately Go-level only — not exposed to Lua via debug.sethook —
+// because a script could otherwise remove its own count hook and defeat the cap.
+func (L *LState) SetInstructionLimit(n uint64) {
+	if n == 0 {
+		L.budget = nil
+		return
+	}
+	L.budget = &execBudget{limit: n}
+}
+
+// ClearInstructionLimit removes any instruction cap (and its counter).
+func (L *LState) ClearInstructionLimit() { L.budget = nil }
+
+// InstructionCount returns the approximate number of instructions executed
+// under the current limit (finGCPoll granularity), or 0 if no limit is set.
+func (L *LState) InstructionCount() uint64 {
+	if L.budget == nil {
+		return 0
+	}
+	return L.budget.count
+}
+
 // RunWith compiles and runs src as a main chunk whose _ENV is env, under a
 // protected call, returning all results. Expose only the globals you trust in
 // env (build it with NewTable) to confine untrusted code; pair with NewSandbox
@@ -23,15 +65,7 @@ func (L *LState) RunWith(env *Table, src, name string) ([]Value, error) {
 	if err != nil {
 		return nil, err
 	}
-	funcIdx := L.top
-	L.push(L.loadProtoEnv(p, mkTable(env)))
-	if err := L.pcall(funcIdx, multRet); err != nil {
-		return nil, err
-	}
-	res := make([]Value, L.top-funcIdx)
-	copy(res, L.stack[funcIdx:L.top])
-	L.top = funcIdx
-	return res, nil
+	return L.CallProtoEnv(p, env, multRet)
 }
 
 // NewSandbox returns a state with only the safe standard libraries open: base,

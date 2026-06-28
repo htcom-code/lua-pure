@@ -62,6 +62,11 @@ type LState struct {
 	// error when the context is done (SetContext). Inherited by coroutines.
 	ctx context.Context
 
+	// budget, when non-nil, caps executed instructions (SetInstructionLimit).
+	// Coroutines share the SAME budget pointer so spawning threads cannot
+	// multiply the allowance; checked at the finalizer-poll gate.
+	budget *execBudget
+
 	// coroutine state (per thread). Each coroutine runs in its own goroutine;
 	// resume/yield hand off cooperatively over these channels so only one is
 	// ever active. Threads share the global tables by pointer.

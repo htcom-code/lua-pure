@@ -53,6 +53,25 @@ func (L *LState) CallProto(p *Proto, nresults int) ([]Value, error) {
 	return res, nil
 }
 
+// CallProtoEnv runs a compiled chunk with a custom _ENV table, returning up to
+// nresults results (multRet for all). It is RunWith for an already-compiled
+// Proto: the chunk's global accesses resolve through env instead of the state's
+// own globals. A pool can compile once (cache the *Proto) and pass a fresh env
+// per call to confine that call's global writes (the Lua 5.4 _ENV sandbox),
+// without recompiling. Build env as setmetatable({}, {__index = baseline}) to
+// fall back to shared library/globals while keeping per-call writes isolated.
+func (L *LState) CallProtoEnv(p *Proto, env *Table, nresults int) ([]Value, error) {
+	funcIdx := L.top
+	L.push(L.loadProtoEnv(p, mkTable(env)))
+	if err := L.pcall(funcIdx, nresults); err != nil {
+		return nil, err
+	}
+	res := make([]Value, L.top-funcIdx)
+	copy(res, L.stack[funcIdx:L.top])
+	L.top = funcIdx
+	return res, nil
+}
+
 // --- globals ---
 
 // SetGlobal sets _ENV[name] = v.
