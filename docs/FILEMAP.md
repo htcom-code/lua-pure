@@ -84,7 +84,10 @@ suffix). See the README's "File map" table for the full PUC↔Go correspondence.
 | `doc.go` | package documentation |
 
 ## tests
-Test files sit beside their subject (`*_test.go`); Go requires it. In-package
-tests use `package luapure`; black-box tests and runnable examples use
-`package luapure_test`. The conformance fixtures live at repo root in
-`_lua5.4-tests/` (moved-in tests reach them via `../_lua5.4-tests/`).
+Test files sit beside their subject (`*_test.go`); Go requires a package's
+tests to live in its own directory. Unit tests that exercise engine internals
+use `package luapure` and stay here in `lua/`; black-box tests and runnable
+examples use `package luapure_test`. The conformance suite is public-API-only,
+so it lives in its own `conformance/` package (not in `lua/`), alongside the
+`cmd/conformance` driver. The official fixtures are at repo root in
+`_lua5.4-tests/` (reached from a sub-package via `../_lua5.4-tests/`).

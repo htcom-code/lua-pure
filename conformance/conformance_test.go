@@ -1,6 +1,10 @@
-package luapure
+package conformance
 
-import "testing"
+import (
+	"testing"
+
+	luapure "github.com/htcom-code/lua-pure/lua"
+)
 
 // Curated conformance gate for the from-scratch 5.4 VM: self-contained snippets
 // exercising the semantics that distinguish Lua 5.4, drawn from the behaviours
@@ -9,7 +13,7 @@ import "testing"
 
 func assertLua(t *testing.T, name, src string) {
 	t.Helper()
-	L := NewState()
+	L := luapure.NewState()
 	L.OpenLibs()
 	res, err := L.DoString("return ("+src+")", "="+name)
 	if err != nil {
@@ -100,7 +104,7 @@ func TestConformanceClosuresAndScope(t *testing.T) {
 }
 
 func TestConformanceLibraryIdentities(t *testing.T) {
-	L := NewState()
+	L := luapure.NewState()
 	L.OpenLibs()
 	cases := map[string]string{
 		"ipairs_identity": `ipairs({}) == ipairs({})`,

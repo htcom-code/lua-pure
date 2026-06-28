@@ -2,4 +2,7 @@
 *.out
 /conf
 /lpconf
+# Stray `go build ./cmd/conformance` binary at the repo root — but keep the
+# conformance/ test package directory tracked.
 /conformance
+!/conformance/

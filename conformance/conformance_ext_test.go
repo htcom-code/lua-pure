@@ -1,9 +1,11 @@
-package luapure
+package conformance
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	luapure "github.com/htcom-code/lua-pure/lua"
 )
 
 // Extended PUC-conformance regression suite: the self-asserting Lua scripts in
@@ -26,10 +28,10 @@ func TestConformanceExtSuite(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			L := NewState()
+			L := luapure.NewState()
 			L.OpenLibs()
 			// Silence each script's trailing "... all cases passed" print.
-			L.SetGlobal("print", NewGoFunc("print", func(*LState) int { return 0 }))
+			L.SetGlobal("print", luapure.NewGoFunc("print", func(*luapure.LState) int { return 0 }))
 			if _, err := L.DoString(string(src), "@"+filepath.Base(path)); err != nil {
 				t.Errorf("%s: %v", filepath.Base(path), err)
 			}

@@ -27,7 +27,8 @@ separate packages.
 | `lua/` | `luapure` — import `github.com/htcom-code/lua-pure/lua` | the engine: VM, compiler, libraries, embedding API |
 | `debugmcp/` | `debugmcp` | debug server over the Model Context Protocol (stdio + HTTP) |
 | `debugdap/` | `debugdap` | debug server over the Debug Adapter Protocol (TCP) |
-| `cmd/conformance/` | `main` | runs the Lua 5.4 conformance suite |
+| `conformance/` | `conformance` (tests) | black-box `go test` suite: curated 5.4 snippets + the PUC behaviour-probe ext suite |
+| `cmd/conformance/` | `main` | standalone driver that runs the official `_lua5.4-tests/` fixtures |
 | `cmd/luadbg-mcp/`, `cmd/luadbg-dap/` | `main` | standalone debug-server binaries |
 | `_lua5.4-tests/` | — | the official Lua 5.4 test suite (fixtures) |
 

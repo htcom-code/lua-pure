@@ -18,7 +18,7 @@ test:
 # Just the PUC behaviour-probe extension suite (also covered by `make test`),
 # for a quick focused run.
 conformance-ext:
-	go test -race -count=1 -run TestConformanceExtSuite ./lua
+	go test -race -count=1 -run TestConformanceExtSuite ./conformance
 
 # The Lua 5.4 conformance fixtures, run by the standalone driver (not part of
 # `go test`). verybig is slow, so allow a longer per-file timeout.
