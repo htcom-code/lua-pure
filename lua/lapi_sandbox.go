@@ -14,6 +14,14 @@ import "context"
 // blocking Go call (e.g. a long io read).
 func (L *LState) SetContext(ctx context.Context) { L.ctx = ctx }
 
+// Context returns the cancellation context set by SetContext (nil if none). A Go
+// callback uses it to make its own blocking work cancellable — e.g. select on
+// Context().Done(), or pass it to a context-aware API — so a blocking call obeys
+// the same deadline as the VM. Without this, a blocking callback ignores
+// SetContext/ExecTimeout (the VM only checks the context between instructions).
+// Returns the running coroutine's inherited context when called from one.
+func (L *LState) Context() context.Context { return L.ctx }
+
 // SetRecoverGoPanics toggles protected mode: when on, a protected call (Call,
 // DoString, the Lua-level pcall, metamethods) that hits a non-LuaError Go panic
 // — typically a registered Go callback that panicked — recovers it into a
