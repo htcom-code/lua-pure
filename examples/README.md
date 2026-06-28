@@ -14,6 +14,7 @@ Run one with `go run ./examples/<name>`:
 | [`sandbox`](sandbox/) | `NewSandbox` + per-call `_ENV` (`RunWith`) + a `SetContext` deadline |
 | [`channel`](channel/) | a Go channel as userdata: two goroutines/LStates message-pass |
 | [`channel-timeout`](channel-timeout/) | cancellable channel `recv` via `L.Context()` + a `SetContext` deadline |
+| [`openlib`](openlib/) | write a library that installs like a built-in (`OpenString`-style): a free `OpenX(L)` opener that exposes Go helpers as a global |
 | [`customlib`](customlib/) | register host modules with `Requiref` (eager) and `Preload` (lazy) |
 
 For small, doc-integrated snippets see the runnable `Example` functions in
