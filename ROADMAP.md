@@ -67,8 +67,8 @@ reference. The discipline is fixed:
   `BenchmarkTreeBuildExec`, `BenchmarkProtectedCall`) are the guardrail.
 
 Current standing vs other engines (latest snapshot in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md)):
-faster than the go-lua 5.1 fork on every workload, and within ~1.5× of the
-reference C interpreter on table/string work (~2.4× on a tight float loop).
+within ~1.5× of the reference C interpreter (and its cgo binding, aarzilli/golua)
+on table/string work, ~2.45× on a tight float loop — as pure Go, with no cgo.
 
 Current levers, ordered by intent — not commitments:
 
