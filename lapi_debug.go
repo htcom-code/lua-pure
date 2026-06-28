@@ -109,7 +109,15 @@ func (L *LState) fireGoHook(ev HookEvent, line int) {
 		return
 	}
 	L.allowHook = false
-	defer func() { L.allowHook = true }()
+	// Move top above the current frame's registers (as fireHook does) so the
+	// hook — and anything it runs, e.g. Frame.Eval — uses scratch slots rather
+	// than clobbering the paused frame's locals.
+	saved := L.top
+	L.top = L.scratchTop()
+	defer func() {
+		L.top = saved
+		L.allowHook = true
+	}()
 	L.goHook(L, ev, line)
 }
 
