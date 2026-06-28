@@ -66,6 +66,10 @@ reference. The discipline is fixed:
 - **No silent regressions** — the `lua/*_bench_test.go` benchmarks (e.g.
   `BenchmarkTreeBuildExec`, `BenchmarkProtectedCall`) are the guardrail.
 
+Current standing vs other engines (latest snapshot in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md)):
+faster than the go-lua 5.1 fork on every workload, and within ~1.5× of the
+reference C interpreter on table/string work (~2.4× on a tight float loop).
+
 Current levers, ordered by intent — not commitments:
 
 - **Execution alloc churn** — reduce per-instruction allocation frequency to cut

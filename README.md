@@ -20,6 +20,7 @@ several Go files (Go favours smaller focused files), the parts share the PUC
 parent name with a suffix.
 
 See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) for how it differs from PUC,
+[`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) for cross-engine speed,
 [`ROADMAP.md`](ROADMAP.md) for what tracks next (PUC-Lua 5.5),
 [`CONTRIBUTING.md`](CONTRIBUTING.md) for the port discipline and test gate, and
 [`CHANGELOG.md`](CHANGELOG.md) for release history.
