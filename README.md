@@ -77,8 +77,9 @@ L := luapure.NewState(luapure.WithSandbox(), luapure.WithContext(ctx))
 globals (`luaconf.go`) for that state alone; other states keep the process-wide
 defaults.
 
-More runnable examples (tables, userdata, sandboxing, structured errors) live in
-[`lua/example_test.go`](lua/example_test.go) and render in `make doc-web`.
+Standalone runnable programs are in [`examples/`](examples/) (`go run
+./examples/<name>`); smaller doc-integrated snippets are the `Example` functions
+in [`lua/example_test.go`](lua/example_test.go), which render in `make doc-web`.
 
 ## Repository layout
 
@@ -95,6 +96,7 @@ Add-ons that build on its public API are separate packages.
 | `conformance/` | `conformance` (tests) | black-box `go test` suite: curated 5.4 snippets + the PUC behaviour-probe ext suite |
 | `cmd/conformance/` | `main` | standalone driver that runs the official `_lua5.4-tests/` fixtures |
 | `cmd/luadbg-mcp/`, `cmd/luadbg-dap/` | `main` | standalone debug-server binaries |
+| `examples/` | `main` (one dir each) | runnable embedding-API examples ([`examples/README.md`](examples/README.md)) |
 | `_lua5.4-tests/` | — | the official Lua 5.4 test suite (fixtures) |
 | `_glue5.4-tests/` | — | extra self-asserting probes pinned to PUC 5.4 oracle values, run by the ext suite |
 
