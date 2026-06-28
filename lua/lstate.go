@@ -236,6 +236,7 @@ func (e *LuaError) Traceback() string { return e.traceback }
 // WithMaxTableArraySize override those limits for this State only.
 func NewState(opts ...Option) *LState {
 	b := newBuildOpts(opts)
+	b.cfg.validate()
 	L := &LState{
 		stack:     make([]Value, luaMinStack*2+extraStack),
 		globals:   newTable(),

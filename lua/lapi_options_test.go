@@ -1,6 +1,7 @@
 package luapure
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -142,5 +143,108 @@ func TestWithMaxCCallsRuntime(t *testing.T) {
 	}
 	if res2[0].Str() != "done" {
 		t.Fatalf("default state should reach the base case, got %q", res2[0].Str())
+	}
+}
+
+// mustPanic asserts fn panics with a message containing want.
+func mustPanic(t *testing.T, want string, fn func()) {
+	t.Helper()
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatalf("expected panic containing %q, got none", want)
+		}
+		if msg := fmt.Sprint(r); !strings.Contains(msg, want) {
+			t.Fatalf("panic %q does not contain %q", msg, want)
+		}
+	}()
+	fn()
+}
+
+// NewState rejects nonsensical per-State limits at construction with a clear
+// panic, rather than letting a bad MaxStack escape as an opaque panic from deep
+// inside DoString or a bad MaxCCalls fail every call. The value is validated
+// whether it comes from an option or the package global default.
+func TestNewStateRejectsBadLimits(t *testing.T) {
+	mustPanic(t, "MaxStack must be > 0", func() { NewState(WithMaxStack(0)) })
+	mustPanic(t, "MaxStack must be > 0", func() { NewState(WithMaxStack(-1)) })
+	mustPanic(t, "MaxCCalls must be > 0", func() { NewState(WithMaxCCalls(0)) })
+	mustPanic(t, "MaxTableArraySize must be >= 0", func() { NewState(WithMaxTableArraySize(-1)) })
+
+	// MaxTableArraySize 0 means "unlimited" and is valid.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("WithMaxTableArraySize(0) should be valid, panicked: %v", r)
+		}
+	}()
+	NewState(WithMaxTableArraySize(0))
+}
+
+// The following lock in how the API behaves when called against the grain of
+// the docs — observed, not assumed.
+
+// Opening the libraries twice (WithOpenLibs then OpenLibs, or OpenLibs twice)
+// is harmless: each call reinstalls fresh library tables, so the state stays
+// usable.
+func TestDoubleOpenLibsIsHarmless(t *testing.T) {
+	L := NewState(WithOpenLibs())
+	L.OpenLibs()
+	res, err := L.DoString(`return type(string) .. "/" .. tostring(math.max(1, 2))`, "=t")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res[0].Str() != "table/2" {
+		t.Fatalf("got %q", res[0].Str())
+	}
+}
+
+// Conflicting library options resolve last-wins, deterministically, in either
+// order (the lib mode is a single setting).
+func TestConflictingLibOptionsLastWins(t *testing.T) {
+	sandboxLast := NewState(WithOpenLibs(), WithSandbox())
+	if !sandboxLast.GetGlobal("os").IsNil() {
+		t.Fatal("WithSandbox last should win (os must be closed)")
+	}
+	openLast := NewState(WithSandbox(), WithOpenLibs())
+	if openLast.GetGlobal("os").IsNil() {
+		t.Fatal("WithOpenLibs last should win (os must be open)")
+	}
+}
+
+// A duplicated limit option resolves last-wins.
+func TestDuplicateLimitOptionLastWins(t *testing.T) {
+	L := NewState(WithMaxStack(111), WithMaxStack(222))
+	if L.cfg.maxStack != 222 {
+		t.Fatalf("want 222, got %d", L.cfg.maxStack)
+	}
+}
+
+// WithSandbox is not sticky: calling OpenLibs afterwards reinstalls the full
+// standard library (including os and load), escaping the sandbox. Documented so
+// callers don't expect the sandbox to survive a later OpenLibs.
+func TestSandboxEscapedByLaterOpenLibs(t *testing.T) {
+	L := NewState(WithSandbox())
+	if !L.GetGlobal("os").IsNil() {
+		t.Fatal("sandbox should start without os")
+	}
+	L.OpenLibs()
+	if L.GetGlobal("os").IsNil() || L.GetGlobal("load").IsNil() {
+		t.Fatal("OpenLibs after WithSandbox should restore os and load")
+	}
+}
+
+// WithContext(nil) is benign: it installs no cancellation, like passing no
+// context option.
+func TestWithContextNil(t *testing.T) {
+	L := NewState(WithOpenLibs(), WithContext(nil))
+	if L.ctx != nil {
+		t.Fatal("WithContext(nil) should leave ctx nil")
+	}
+	res, err := L.DoString(`return 7`, "=t")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res[0].AsInt() != 7 {
+		t.Fatalf("got %d", res[0].AsInt())
 	}
 }

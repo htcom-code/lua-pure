@@ -1,6 +1,9 @@
 package luapure
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 // Options for NewState. luapure keeps PUC's configuration knobs as package
 // globals (luaconf.go), set once before any State — PUC bakes them in at
@@ -27,6 +30,25 @@ func defaultStateConfig() stateConfig {
 		maxStack:          MaxStack,
 		maxCCalls:         MaxCCalls,
 		maxTableArraySize: MaxTableArraySize,
+	}
+}
+
+// validate rejects nonsensical limits at construction. PUC leaves these
+// unvalidated, but in Go a bad MaxStack would otherwise surface as a panic from
+// deep inside DoString (the stack-overflow check fires before the protected
+// call), and a bad MaxCCalls as an opaque "C stack overflow" on the first call.
+// Failing here, at NewState, points the embedder straight at the bad option.
+// maxTableArraySize == 0 is valid (it means "unlimited"); only a negative cap
+// is rejected.
+func (c stateConfig) validate() {
+	if c.maxStack <= 0 {
+		panic(fmt.Sprintf("luapure: MaxStack must be > 0, got %d (WithMaxStack or the package global)", c.maxStack))
+	}
+	if c.maxCCalls <= 0 {
+		panic(fmt.Sprintf("luapure: MaxCCalls must be > 0, got %d (WithMaxCCalls or the package global)", c.maxCCalls))
+	}
+	if c.maxTableArraySize < 0 {
+		panic(fmt.Sprintf("luapure: MaxTableArraySize must be >= 0 (0 = unlimited), got %d", c.maxTableArraySize))
 	}
 }
 

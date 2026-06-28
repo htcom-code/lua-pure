@@ -9,15 +9,18 @@ package luapure
 // out of the box. An embedder may override them, but the contract mirrors PUC's
 // compile-time nature: set them ONCE at startup, before creating any State.
 // Mutating a Tunable while a State is executing races with that State and is
-// not supported. There is no runtime validation (PUC has none either); a
-// nonsensical value (e.g. a zero or negative limit) yields undefined behavior.
+// not supported.
 //
 // Three of these are read while a State runs and can additionally be overridden
 // per State at construction — see the NewState options WithMaxStack,
 // WithMaxCCalls, and WithMaxTableArraySize. Each State snapshots the package
-// globals at NewState; an option then overrides its own copy. The rest stay
+// globals at NewState; an option then overrides its own copy. NewState
+// validates these three (whether they come from an option or the global) and
+// panics on a nonsensical value: MaxStack and MaxCCalls must be > 0, and
+// MaxTableArraySize must be >= 0 (0 means unlimited). The rest stay
 // process-wide because they are read by the stateless compiler, which has no
-// State to carry per-instance config.
+// State to carry per-instance config; they are not validated (PUC validates
+// none), so a nonsensical value there yields undefined behavior.
 
 // --- Tunable limits (settable; defaults match stock PUC luaconf.h) ---
 
