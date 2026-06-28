@@ -132,6 +132,31 @@ func TestMCPHandshakeAndTools(t *testing.T) {
 	}
 }
 
+// Version negotiation: a supported version is echoed; an unknown or missing one
+// is answered with our latest rather than claimed as supported.
+func TestMCPProtocolNegotiation(t *testing.T) {
+	cases := []struct{ ask, want string }{
+		{"2025-11-25", "2025-11-25"},   // latest, supported -> echo
+		{"2025-06-18", "2025-06-18"},   // older, supported -> echo
+		{"2099-01-01", latestProtocol}, // unknown future -> downgrade
+		{"", latestProtocol},           // missing -> latest
+	}
+	for _, c := range cases {
+		srv := newTestServer()
+		tr := newChanTransport()
+		go srv.Serve(tr)
+		cl := &testClient{t: t, tr: tr}
+		params := map[string]any{}
+		if c.ask != "" {
+			params["protocolVersion"] = c.ask
+		}
+		init := cl.call("initialize", params)
+		if init["protocolVersion"] != c.want {
+			t.Errorf("ask %q: protocolVersion = %v, want %v", c.ask, init["protocolVersion"], c.want)
+		}
+	}
+}
+
 // Full debug session over MCP: breakpoint, inspect, evaluate, step the loop to
 // completion. The client never holds the source — it launches by id and fetches
 // a snippet from the server.

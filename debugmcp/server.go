@@ -39,6 +39,18 @@ type Server struct {
 	inline   map[string]string
 }
 
+// MCP protocol versions this server speaks. Our surface (initialize, tools and
+// structuredContent) is unchanged across these revisions, so we negotiate the
+// version string only: echo the client's when supported, else answer with our
+// latest and let the client decide. latestProtocol is also the default when the
+// client sends none.
+const latestProtocol = "2025-11-25"
+
+var supportedProtocols = map[string]bool{
+	"2025-11-25": true,
+	"2025-06-18": true,
+}
+
 type runState uint8
 
 const (
@@ -106,9 +118,11 @@ func (s *Server) initialize(params json.RawMessage) any {
 		ProtocolVersion string `json:"protocolVersion"`
 	}
 	_ = json.Unmarshal(params, &p)
+	// Echo the client's version when we support it; otherwise downgrade to our
+	// latest rather than claim support for an unknown revision.
 	ver := p.ProtocolVersion
-	if ver == "" {
-		ver = "2025-06-18"
+	if !supportedProtocols[ver] {
+		ver = latestProtocol
 	}
 	name, version := s.Name, s.Version
 	if name == "" {
