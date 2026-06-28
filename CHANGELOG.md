@@ -32,6 +32,9 @@ First release. **Targets PUC-Lua 5.4.8.**
   with `Value()`/`Traceback()`, userdata with metatables and uservalues,
   sandboxing (`NewSandbox`/`RunWith`), cooperative cancellation (`SetContext`),
   file loading (`LoadFile`/`DoFile`/`CompileReader`), and lifecycle `Close`.
+- **Version identifiers.** `luapure.Version` / `VersionString()` and the Lua
+  global `_LUAPURE_VERSION` ("luapure 0.1.0 (Lua 5.4.8)"); `_VERSION` stays
+  exactly "Lua 5.4" for PUC conformance.
 - **Debugger.** Breakpoint / step / pause core, exposed over the Model Context
   Protocol (stdio + HTTP, `debugmcp`) and the Debug Adapter Protocol (TCP,
   `debugdap`), with standalone binaries under `cmd/`.
