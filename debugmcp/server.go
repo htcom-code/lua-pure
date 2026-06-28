@@ -55,6 +55,7 @@ type runState uint8
 
 const (
 	stateIdle     runState = iota // no program launched
+	stateRunning                  // a control op is resuming/awaiting the next stop
 	statePaused                   // stopped at a breakpoint/step
 	stateFinished                 // program ended
 )
@@ -62,12 +63,7 @@ const (
 // Serve runs the MCP message loop over t until the peer closes (io.EOF) or a
 // transport error occurs. It is the blocking entry point.
 func (s *Server) Serve(t Transport) error {
-	if s.bps == nil {
-		s.bps = map[string][]int{}
-	}
-	if s.inline == nil {
-		s.inline = map[string]string{}
-	}
+	s.once()
 	for {
 		msg, err := t.Read()
 		if err != nil {
@@ -79,21 +75,44 @@ func (s *Server) Serve(t Transport) error {
 		if len(bytes.TrimSpace(msg)) == 0 {
 			continue
 		}
-		var req rpcMessage
-		if err := json.Unmarshal(msg, &req); err != nil {
-			_ = t.Write(encodeError(nil, errf(codeParse, "parse error")))
-			continue
+		if reply := s.HandleMessage(msg); reply != nil {
+			_ = t.Write(reply)
 		}
-		result, rerr := s.dispatch(req.Method, req.Params)
-		if req.ID == nil {
-			continue // notification: no response
-		}
-		if rerr != nil {
-			_ = t.Write(encodeError(req.ID, rerr))
-			continue
-		}
-		_ = t.Write(encodeResult(req.ID, result))
 	}
+}
+
+// HandleMessage processes one JSON-RPC message and returns the reply frame, or
+// nil for a notification (no reply). It is the shared core behind the stdio/TCP
+// Serve loop and the HTTP Handler. Safe for concurrent calls (the HTTP server
+// invokes it per request); blocking control tools do not hold the server lock,
+// so a pause can land while a continue is in flight.
+func (s *Server) HandleMessage(msg []byte) []byte {
+	s.once()
+	var req rpcMessage
+	if err := json.Unmarshal(msg, &req); err != nil {
+		return encodeError(nil, errf(codeParse, "parse error"))
+	}
+	result, rerr := s.dispatch(req.Method, req.Params)
+	if req.ID == nil {
+		return nil // notification
+	}
+	if rerr != nil {
+		return encodeError(req.ID, rerr)
+	}
+	return encodeResult(req.ID, result)
+}
+
+// once lazily initialises the maps (Serve and HandleMessage are both entry
+// points).
+func (s *Server) once() {
+	s.mu.Lock()
+	if s.bps == nil {
+		s.bps = map[string][]int{}
+	}
+	if s.inline == nil {
+		s.inline = map[string]string{}
+	}
+	s.mu.Unlock()
 }
 
 func (s *Server) dispatch(method string, params json.RawMessage) (any, *rpcError) {
@@ -150,8 +169,9 @@ func (s *Server) toolsCall(params json.RawMessage) (any, *rpcError) {
 	if run == nil {
 		return nil, errf(codeInvalidParams, "unknown tool: "+p.Name)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// No blanket lock: control tools block until the next stop, and must not
+	// hold the server lock while doing so (so pause/set_breakpoints stay
+	// responsive). Each handler does its own short-lived locking.
 	payload, toolErr := run(s, p.Arguments)
 	if toolErr != "" {
 		// MCP convention: a tool's own failure is a normal result with isError,

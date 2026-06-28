@@ -86,17 +86,18 @@ func toolSetBreakpoints(s *Server, args map[string]any) (any, string) {
 		return nil, "missing 'source'"
 	}
 	lines := argIntSlice(args, "lines")
+	// Concurrent-safe: store for the next launch, and apply live if running.
+	s.mu.Lock()
 	s.bps[source] = lines
-	if s.sess != nil {
-		s.sess.SetBreakpoints(source, lines)
+	sess := s.sess
+	s.mu.Unlock()
+	if sess != nil {
+		sess.SetBreakpoints(source, lines)
 	}
 	return map[string]any{"source": source, "lines": lines}, ""
 }
 
 func toolLaunch(s *Server, args map[string]any) (any, string) {
-	if s.state == statePaused {
-		return nil, "a program is already paused; continue it to completion before launching again"
-	}
 	if s.NewState == nil {
 		return nil, "server misconfigured: NewState is nil"
 	}
@@ -104,9 +105,12 @@ func toolLaunch(s *Server, args map[string]any) (any, string) {
 	if program == "" {
 		return nil, "missing 'program'"
 	}
+	// Resolve the source outside the lock (it may hit a slow store).
 	src := argStr(args, "source")
 	if src != "" {
+		s.mu.Lock()
 		s.inline[program] = src
+		s.mu.Unlock()
 	} else {
 		t, ok := s.resolveSource(program)
 		if !ok {
@@ -115,47 +119,75 @@ func toolLaunch(s *Server, args map[string]any) (any, string) {
 		src = t
 	}
 
-	L := s.NewState()
-	resolver := func(id string) (string, bool) { return s.resolveSource(id) }
-	s.sess = luapure.NewSession(L, resolver)
-	for srcKey, lines := range s.bps {
-		s.sess.SetBreakpoints(srcKey, lines)
+	s.mu.Lock()
+	if s.state == stateRunning {
+		s.mu.Unlock()
+		return nil, "a debug operation is already in progress"
 	}
-	s.done = s.sess.Start(src, "="+program)
-	return s.wait(), ""
+	if s.state == statePaused {
+		s.mu.Unlock()
+		return nil, "a program is already paused; continue it before launching again"
+	}
+	L := s.NewState()
+	sess := luapure.NewSession(L, func(id string) (string, bool) { return s.resolveSource(id) })
+	bps := make(map[string][]int, len(s.bps))
+	for k, v := range s.bps {
+		bps[k] = v
+	}
+	s.sess = sess
+	s.state = stateRunning
+	s.mu.Unlock()
+
+	for k, lines := range bps {
+		sess.SetBreakpoints(k, lines)
+	}
+	done := sess.Start(src, "="+program)
+	s.mu.Lock()
+	s.done = done
+	s.mu.Unlock()
+	return s.waitFor(sess, done), ""
 }
 
-func toolContinue(s *Server, args map[string]any) (any, string) {
-	if e := s.requirePaused(); e != "" {
-		return nil, e
-	}
-	s.sess.Continue()
-	return s.wait(), ""
-}
+func toolContinue(s *Server, args map[string]any) (any, string) { return s.resumeAndWait((*luapure.Session).Continue) }
 
 func toolStep(step func(*luapure.Session)) toolHandler {
-	return func(s *Server, args map[string]any) (any, string) {
-		if e := s.requirePaused(); e != "" {
-			return nil, e
-		}
-		step(s.sess)
-		return s.wait(), ""
+	return func(s *Server, args map[string]any) (any, string) { return s.resumeAndWait(step) }
+}
+
+// resumeAndWait issues a resume action while paused, then waits (without holding
+// the lock) for the next stop or program end.
+func (s *Server) resumeAndWait(action func(*luapure.Session)) (any, string) {
+	s.mu.Lock()
+	if s.state != statePaused {
+		st := s.state
+		s.mu.Unlock()
+		return nil, notPausedMsg(st)
 	}
+	sess, done := s.sess, s.done
+	s.state = stateRunning
+	s.mu.Unlock()
+
+	action(sess)
+	return s.waitFor(sess, done), ""
 }
 
 func toolPause(s *Server, args map[string]any) (any, string) {
-	if s.sess == nil {
+	s.mu.Lock()
+	sess := s.sess
+	s.mu.Unlock()
+	if sess == nil {
 		return nil, "no active session"
 	}
-	s.sess.Pause()
+	sess.Pause()
 	return map[string]any{"ok": true}, ""
 }
 
 func toolStack(s *Server, args map[string]any) (any, string) {
-	if e := s.requirePaused(); e != "" {
-		return nil, e
+	sess, msg := s.pausedSession()
+	if msg != "" {
+		return nil, msg
 	}
-	frames := s.sess.Stack()
+	frames := sess.Stack()
 	out := make([]map[string]any, len(frames))
 	for i, f := range frames {
 		out[i] = map[string]any{
@@ -167,10 +199,11 @@ func toolStack(s *Server, args map[string]any) (any, string) {
 }
 
 func toolVariables(s *Server, args map[string]any) (any, string) {
-	if e := s.requirePaused(); e != "" {
-		return nil, e
+	sess, msg := s.pausedSession()
+	if msg != "" {
+		return nil, msg
 	}
-	vars := s.sess.Variables(argInt(args, "frame", 0))
+	vars := sess.Variables(argInt(args, "frame", 0))
 	out := make([]map[string]any, len(vars))
 	for i, v := range vars {
 		out[i] = map[string]any{"name": v.Name, "value": v.Value, "kind": v.Kind}
@@ -179,14 +212,15 @@ func toolVariables(s *Server, args map[string]any) (any, string) {
 }
 
 func toolEvaluate(s *Server, args map[string]any) (any, string) {
-	if e := s.requirePaused(); e != "" {
-		return nil, e
+	sess, msg := s.pausedSession()
+	if msg != "" {
+		return nil, msg
 	}
 	expr := argStr(args, "expr")
 	if expr == "" {
 		return nil, "missing 'expr'"
 	}
-	res, err := s.sess.Eval(argInt(args, "frame", 0), expr)
+	res, err := sess.Eval(argInt(args, "frame", 0), expr)
 	if err != nil {
 		return nil, err.Error()
 	}
@@ -195,8 +229,12 @@ func toolEvaluate(s *Server, args map[string]any) (any, string) {
 
 func toolGetSource(s *Server, args map[string]any) (any, string) {
 	id := argStr(args, "id")
-	if id == "" && s.state == statePaused {
-		id = s.lastStop.Source
+	if id == "" {
+		s.mu.Lock()
+		if s.state == statePaused {
+			id = s.lastStop.Source
+		}
+		s.mu.Unlock()
 	}
 	if id == "" {
 		return nil, "missing 'id'"
@@ -216,10 +254,21 @@ func toolGetSource(s *Server, args map[string]any) (any, string) {
 
 // --- helpers ---
 
-func (s *Server) requirePaused() string {
-	switch s.state {
-	case statePaused:
-		return ""
+// pausedSession returns the session iff the program is paused, else an error
+// message. Inspection tools must run only while paused (the VM is parked then).
+func (s *Server) pausedSession() (*luapure.Session, string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state != statePaused {
+		return nil, notPausedMsg(s.state)
+	}
+	return s.sess, ""
+}
+
+func notPausedMsg(st runState) string {
+	switch st {
+	case stateRunning:
+		return "a debug operation is already in progress"
 	case stateFinished:
 		return "the program has finished; launch again to debug"
 	default:
@@ -227,8 +276,13 @@ func (s *Server) requirePaused() string {
 	}
 }
 
+// resolveSource reads the inline override (briefly locked) then falls back to
+// the configured resolver (unlocked, as it may be slow).
 func (s *Server) resolveSource(id string) (string, bool) {
-	if t, ok := s.inline[id]; ok {
+	s.mu.Lock()
+	t, ok := s.inline[id]
+	s.mu.Unlock()
+	if ok {
 		return t, true
 	}
 	if s.Source != nil {
@@ -237,19 +291,23 @@ func (s *Server) resolveSource(id string) (string, bool) {
 	return "", false
 }
 
-// wait blocks until the program next stops or finishes, updating server state
-// and returning the matching event payload.
-func (s *Server) wait() any {
+// waitFor blocks (without the lock) until the program next stops or finishes,
+// updating state under a brief lock and returning the matching event payload.
+func (s *Server) waitFor(sess *luapure.Session, done <-chan luapure.RunResult) any {
 	select {
-	case st := <-s.sess.Stops():
+	case st := <-sess.Stops():
+		s.mu.Lock()
 		s.lastStop = st
 		s.state = statePaused
+		s.mu.Unlock()
 		return map[string]any{
 			"event": "stopped", "reason": st.Reason.String(),
 			"source": st.Source, "line": st.Line, "function": st.Func, "depth": st.Depth,
 		}
-	case r := <-s.done:
+	case r := <-done:
+		s.mu.Lock()
 		s.state = stateFinished
+		s.mu.Unlock()
 		m := map[string]any{"event": "finished"}
 		if r.Err != nil {
 			m["error"] = r.Err.Error()
