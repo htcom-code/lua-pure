@@ -116,3 +116,35 @@ func BenchmarkTreeBuildExec(b *testing.B) {
 		}
 	}
 }
+
+// protectedCallSource stresses the protected-call path — pcall's defer/recover
+// in ldo.go — with many pcalls per run. This is the workload that would expose
+// any hot-path cost of the opt-in Go-panic recover mode (which only changes the
+// recover branch, taken on panic), so it serves as the before/after baseline.
+const protectedCallSource = `
+local function f(x) return x + 1 end
+local s = 0
+for i = 1, 200000 do
+  local ok, v = pcall(f, i)
+  s = s + v
+end
+return s
+`
+
+func BenchmarkProtectedCall(b *testing.B) {
+	p, err := CompileString(protectedCallSource, "@pcall")
+	if err != nil {
+		b.Fatal(err)
+	}
+	L := NewState()
+	L.OpenLibs()
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		fn := L.loadProtoEnv(p, mkTable(L.globals))
+		res := L.CallValue(fn, nil, 1)
+		if len(res) != 1 {
+			b.Fatalf("unexpected result %#v", res)
+		}
+	}
+}
