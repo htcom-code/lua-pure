@@ -2,10 +2,49 @@
 
 The engine is one Go package (`package luapure`) in `lua/`. Go requires a
 package to live in a single directory, so — like PUC's flat `src/` — the files
-are not foldered; instead the `l`-prefix mirrors PUC's source names and the
-groups below give a functional index. To find the Go file for a PUC source, the
-rule of thumb is `lfoo.c` → `lfoo.go` (split files keep the parent name plus a
-suffix). See the README's "File map" table for the full PUC↔Go correspondence.
+are not foldered; instead the `l`-prefix mirrors PUC's source names. To find the
+Go file for a PUC source, the rule of thumb is `lfoo.c` → `lfoo.go` (split files
+keep the parent name plus a suffix); the table below is the full PUC↔Go
+correspondence, and the groups after it give a functional index.
+
+## PUC source → Go file (`lua/`)
+
+| PUC source | Go file(s) | notes |
+|---|---|---|
+| `lapi.c` / `lapi.h` | `lapi.go` | compile/load/call entry points (`CompileString`, `DoString`, `CallProto`) |
+| `lauxlib.c` / `.h` | `lauxlib.go` | `luaL_*` helpers, arg checking, traceback frame naming |
+| `lbaselib.c` | `lbaselib.go` | base library (`print`, `pcall`, `setmetatable`, `load`, …) |
+| `lcode.c` / `.h` | `lcode.go` | code generator (bytecode emit, constants, jumps) |
+| `lcorolib.c` | `lcorolib.go` | coroutine library (goroutine-per-coroutine model) |
+| `lctype.c` / `.h` | *(folded into `llex.go`)* | ASCII character classes (`lisdigit`, …) |
+| `ldblib.c` | `ldblib.go` | debug library (`getinfo`, `getlocal`, `sethook`, …) |
+| `ldebug.c` / `.h` | `ldebug.go` | symbolic names for errors (`getobjname`); call-name logic also in `lauxlib.go` |
+| `ldo.c` / `.h` | `ldo.go`, `ldo_hook.go` | call/return/pcall stack machinery; debug-hook firing |
+| `ldump.c` + `lundump.c` / `.h` | `ldump.go` | binary chunk dump **and** undump (combined) |
+| `lfunc.c` / `.h` | `lfunc.go` | closures and upvalues |
+| `lgc.c` / `.h` | `lgc.go`, `lgc_weak.go` | `__gc` finalizers; `__mode` weak tables (GC itself is delegated to the Go runtime) |
+| `linit.c` | `linit.go` | `OpenLibs` — standard library installation |
+| `liolib.c` | `liolib.go` | io library |
+| `llex.c` / `.h` | `llex.go` | lexer |
+| `llimits.h` | *(folded into callers)* | limits/macros (`MAXARG_*`, `intop`, …) |
+| `lmathlib.c` | `lmathlib.go` | math library (xoshiro256\*\* PRNG, bit-identical to PUC) |
+| `lmem.c` / `.h` | *(none — Go GC)* | PUC's manual allocator has no counterpart |
+| `loadlib.c` | `loadlib.go` | `load`/`require`/`package` |
+| `lobject.c` / `.h` | `lobject.go`, `lobject_gc.go`, `lobject_num.go`, `lobject_proto.go` | `Value` core; GC-object accessors; number⇄string; `Proto` |
+| `lopcodes.c` / `.h` | `lopcodes.go` | opcode formats and decode/encode |
+| `loslib.c` | `loslib.go` | os library |
+| `lparser.c` / `.h` | `lparser.go`, `lparser_codegen.go` | parser; compiler/scope/register glue |
+| `lstate.c` / `.h` | `lstate.go` | `LState` (thread + global state fused), `callInfo` |
+| `lstring.c` / `.h` | *(folded into `lobject.go`/`lcode.go`)* | per-chunk literal interning instead of a global string table |
+| `lstrlib.c` | `lstrlib.go`, `lstrlib_pattern.go`, `lstrlib_pack.go` | string library; pattern matching; `string.pack`/`unpack` |
+| `ltable.c` / `.h` | `ltable.go` | tables (split array part + Go map) |
+| `ltablib.c` | `ltablib.go` | table library |
+| `ltm.c` / `.h` | `ltm.go` | tag methods / metamethods |
+| `lutf8lib.c` | `lutf8lib.go` | utf8 library |
+| `lvm.c` / `.h` | `lvm.go`, `lvm_execute.go`, `lvm_arith.go` | VM helpers (concat, index, compare); dispatch loop; raw arithmetic |
+| `lzio.c` / `.h` | `lzio.go` | buffered input stream (ZIO) — unifies string/file/reader load paths |
+| `luac.c` (print) | `disasm.go` | bytecode disassembler (PUC ships this in the `luac` tool, not the library) |
+| `lua.c` | *(repo `cmd/`)* | standalone interpreter — not part of this package |
 
 ## objects — values, tables, functions, metamethods
 | file | role |

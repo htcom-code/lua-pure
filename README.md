@@ -1,4 +1,4 @@
-# lua-pure — a pure-Go Lua 5.4 VM
+# LuaPure — a pure Go Lua VM
 
 `luapure` is a pure-Go implementation of **PUC-Lua 5.4**: its instruction set,
 single-pass compiler, virtual machine, standard libraries, and semantics are
@@ -18,9 +18,9 @@ parent name with a suffix.
 ## Repository layout
 
 The engine is a single Go package (one package = one directory, so it stays
-flat like PUC's `src/`; navigate it by the file map below or
-[`docs/FILEMAP.md`](docs/FILEMAP.md)). Add-ons that build on its public API are
-separate packages.
+flat like PUC's `src/`; navigate it by [`docs/FILEMAP.md`](docs/FILEMAP.md),
+which carries the full PUC source → Go file map and a functional index).
+Add-ons that build on its public API are separate packages.
 
 | path | package | what |
 |---|---|---|
@@ -32,45 +32,6 @@ separate packages.
 | `cmd/luadbg-mcp/`, `cmd/luadbg-dap/` | `main` | standalone debug-server binaries |
 | `_lua5.4-tests/` | — | the official Lua 5.4 test suite (fixtures) |
 | `_glue5.4-tests/` | — | extra self-asserting probes pinned to PUC 5.4 oracle values, run by the ext suite |
-
-## File map (PUC source → `lua/`)
-
-| PUC source | this package | notes |
-|---|---|---|
-| `lapi.c` / `lapi.h` | `lapi.go` | compile/load/call entry points (`CompileString`, `DoString`, `CallProto`) |
-| `lauxlib.c` / `.h` | `lauxlib.go` | `luaL_*` helpers, arg checking, traceback frame naming |
-| `lbaselib.c` | `lbaselib.go` | base library (`print`, `pcall`, `setmetatable`, `load`, …) |
-| `lcode.c` / `.h` | `lcode.go` | code generator (bytecode emit, constants, jumps) |
-| `lcorolib.c` | `lcorolib.go` | coroutine library (goroutine-per-coroutine model) |
-| `lctype.c` / `.h` | *(folded into `llex.go`)* | ASCII character classes (`lisdigit`, …) |
-| `ldblib.c` | `ldblib.go` | debug library (`getinfo`, `getlocal`, `sethook`, …) |
-| `ldebug.c` / `.h` | `ldebug.go` | symbolic names for errors (`getobjname`); call-name logic also in `lauxlib.go` |
-| `ldo.c` / `.h` | `ldo.go`, `ldo_hook.go` | call/return/pcall stack machinery; debug-hook firing |
-| `ldump.c` + `lundump.c` / `.h` | `ldump.go` | binary chunk dump **and** undump (combined) |
-| `lfunc.c` / `.h` | `lfunc.go` | closures and upvalues |
-| `lgc.c` / `.h` | `lgc.go`, `lgc_weak.go` | `__gc` finalizers; `__mode` weak tables. **GC itself is delegated to the Go runtime** (see below) |
-| `linit.c` | `linit.go` | `OpenLibs` — standard library installation |
-| `liolib.c` | `liolib.go` | io library |
-| `llex.c` / `.h` | `llex.go` | lexer |
-| `llimits.h` | *(folded into callers)* | limits/macros (`MAXARG_*`, `intop`, …) |
-| `lmathlib.c` | `lmathlib.go` | math library (xoshiro256\*\* PRNG, bit-identical to PUC) |
-| `lmem.c` / `.h` | *(none — Go GC)* | PUC's manual allocator has no counterpart |
-| `loadlib.c` | `loadlib.go` | `load`/`require`/`package` |
-| `lobject.c` / `.h` | `lobject.go`, `lobject_gc.go`, `lobject_num.go`, `lobject_proto.go` | `Value` core; GC-object accessors; number⇄string; `Proto` |
-| `lopcodes.c` / `.h` | `lopcodes.go` | opcode formats and decode/encode |
-| `loslib.c` | `loslib.go` | os library |
-| `lparser.c` / `.h` | `lparser.go`, `lparser_codegen.go` | parser; compiler/scope/register glue |
-| `lstate.c` / `.h` | `lstate.go` | `LState` (thread + global state fused), `callInfo` |
-| `lstring.c` / `.h` | *(folded into `lobject.go`/`lcode.go`)* | per-chunk literal interning instead of a global string table |
-| `lstrlib.c` | `lstrlib.go`, `lstrlib_pattern.go`, `lstrlib_pack.go` | string library; pattern matching; `string.pack`/`unpack` |
-| `ltable.c` / `.h` | `ltable.go` | tables (split array part + Go map) |
-| `ltablib.c` | `ltablib.go` | table library |
-| `ltm.c` / `.h` | `ltm.go` | tag methods / metamethods |
-| `lutf8lib.c` | `lutf8lib.go` | utf8 library |
-| `lvm.c` / `.h` | `lvm.go`, `lvm_execute.go`, `lvm_arith.go` | VM helpers (concat, index, compare); dispatch loop; raw arithmetic |
-| `lzio.c` / `.h` | `lzio.go` | buffered input stream (ZIO) — unifies string/file/reader load paths |
-| `luac.c` (print) | `disasm.go` | bytecode disassembler (PUC ships this in the `luac` tool, not the library) |
-| `lua.c` | *(repo `cmd/`)* | standalone interpreter — not part of this package |
 
 ## Intentional divergences from PUC (same observable behavior)
 
