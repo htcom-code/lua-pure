@@ -63,10 +63,11 @@ const (
 
 // buildOpts accumulates option effects before NewState applies them.
 type buildOpts struct {
-	cfg    stateConfig
-	libs   libMode
-	ctx    context.Context
-	hasCtx bool
+	cfg             stateConfig
+	libs            libMode
+	ctx             context.Context
+	hasCtx          bool
+	recoverGoPanics bool
 }
 
 func newBuildOpts(opts []Option) buildOpts {
@@ -94,6 +95,13 @@ func WithSandbox() Option { return func(b *buildOpts) { b.libs = libsSandbox } }
 func WithContext(ctx context.Context) Option {
 	return func(b *buildOpts) { b.ctx = ctx; b.hasCtx = true }
 }
+
+// WithRecoverGoPanics turns on protected mode (equivalent to SetRecoverGoPanics):
+// a non-LuaError Go panic from a registered callback is recovered into a
+// catchable *GoPanicError and the VM is unwound cleanly, instead of escaping to
+// the host. Off by default (PUC-faithful re-panic); useful for pools that must
+// survive a panicking callback.
+func WithRecoverGoPanics() Option { return func(b *buildOpts) { b.recoverGoPanics = true } }
 
 // WithMaxStack overrides MaxStack for this State only: the value-stack ceiling
 // that turns unbounded recursion into a catchable "stack overflow".

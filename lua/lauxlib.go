@@ -295,7 +295,13 @@ func (L *LState) protect(fn Value, args []Value) (results []Value, errv Value, o
 		if r := recover(); r != nil {
 			le, isLE := r.(*LuaError)
 			if !isLE {
-				panic(r)
+				// Protected mode (SetRecoverGoPanics): absorb a non-LuaError Go
+				// panic so a script-level pcall/xpcall catches a panicking Go
+				// callback like any other error. Default re-panics (PUC-faithful).
+				if !L.recoverGoPanics {
+					panic(r)
+				}
+				le = newGoPanicError(r)
 			}
 			L.closeUpvals(funcIdx)
 			// Run any to-be-closed variables created during the call, with the

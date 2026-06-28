@@ -14,6 +14,16 @@ import "context"
 // blocking Go call (e.g. a long io read).
 func (L *LState) SetContext(ctx context.Context) { L.ctx = ctx }
 
+// SetRecoverGoPanics toggles protected mode: when on, a protected call (Call,
+// DoString, the Lua-level pcall, metamethods) that hits a non-LuaError Go panic
+// — typically a registered Go callback that panicked — recovers it into a
+// catchable *GoPanicError and unwinds the VM to its pre-call state, so the panic
+// does not escape to the host and the State remains reusable. When off (the
+// default) such a panic is re-raised unchanged, which is PUC-faithful (PUC does
+// not catch a C-side abort) and surfaces genuine host bugs. A pool that runs
+// less-trusted callbacks typically turns this on. Inherited by coroutines.
+func (L *LState) SetRecoverGoPanics(on bool) { L.recoverGoPanics = on }
+
 // instrLimitMsg is the error raised when an instruction budget is exceeded; the
 // host maps it (e.g. to a typed ErrInstructionLimit) by matching this text.
 const instrLimitMsg = "instruction limit exceeded"

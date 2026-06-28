@@ -45,24 +45,25 @@ func (L *LState) OpenCoroutine() {
 // newThread creates a suspended coroutine sharing this VM's global tables.
 func (L *LState) newThread() *LState {
 	return &LState{
-		stack:     make([]Value, luaMinStack*2+extraStack),
-		globals:   L.globals,
-		registry:  L.registry,
-		stringMT:  L.stringMT,
-		pkgLoaded: L.pkgLoaded,
-		pkgTable:  L.pkgTable,
-		basicMT:   L.basicMT,
-		cfg:       L.cfg,    // inherit the parent's per-State limits
-		budget:    L.budget, // share the instruction budget (no multiplying via spawns)
-		allowHook: true,
-		errReg:    -1,
-		errUpval:  -1,
-		co:        L.co,
-		rng:       L.rng,
-		ctx:       L.ctx, // a cancelled context stops every thread, not just the main one
-		status:    coSuspended,
-		resumeCh:  make(chan []Value),
-		yieldCh:   make(chan coMsg),
+		stack:           make([]Value, luaMinStack*2+extraStack),
+		globals:         L.globals,
+		registry:        L.registry,
+		stringMT:        L.stringMT,
+		pkgLoaded:       L.pkgLoaded,
+		pkgTable:        L.pkgTable,
+		basicMT:         L.basicMT,
+		cfg:             L.cfg,    // inherit the parent's per-State limits
+		budget:          L.budget, // share the instruction budget (no multiplying via spawns)
+		recoverGoPanics: L.recoverGoPanics,
+		allowHook:       true,
+		errReg:          -1,
+		errUpval:        -1,
+		co:              L.co,
+		rng:             L.rng,
+		ctx:             L.ctx, // a cancelled context stops every thread, not just the main one
+		status:          coSuspended,
+		resumeCh:        make(chan []Value),
+		yieldCh:         make(chan coMsg),
 	}
 }
 

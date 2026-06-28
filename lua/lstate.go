@@ -67,6 +67,13 @@ type LState struct {
 	// multiply the allowance; checked at the finalizer-poll gate.
 	budget *execBudget
 
+	// recoverGoPanics, when set, makes the protected call recover a non-LuaError
+	// Go panic (e.g. from a registered Go callback) into a catchable error and
+	// unwind the VM cleanly, instead of re-panicking to the host. Default false
+	// keeps PUC-faithful re-panic. Set via SetRecoverGoPanics/WithRecoverGoPanics;
+	// inherited by coroutines.
+	recoverGoPanics bool
+
 	// coroutine state (per thread). Each coroutine runs in its own goroutine;
 	// resume/yield hand off cooperatively over these channels so only one is
 	// ever active. Threads share the global tables by pointer.
@@ -213,6 +220,7 @@ type callInfo struct {
 type LuaError struct {
 	value     Value
 	traceback string
+	goPanic   *GoPanicError // non-nil when this wraps a recovered Go panic (protected mode)
 }
 
 func (e *LuaError) Error() string {
@@ -232,6 +240,31 @@ func (e *LuaError) Value() Value { return e.value }
 // Traceback returns the captured stack traceback, or "" if none was attached.
 func (e *LuaError) Traceback() string { return e.traceback }
 
+// Unwrap exposes a recovered Go panic so callers can errors.As(err, &gpe) for a
+// *GoPanicError; it returns nil for an ordinary Lua error.
+func (e *LuaError) Unwrap() error {
+	if e.goPanic != nil {
+		return e.goPanic
+	}
+	return nil
+}
+
+// GoPanicError wraps a non-LuaError Go panic that the protected call recovered
+// in protected mode (SetRecoverGoPanics / WithRecoverGoPanics). Value is the
+// recovered panic value. It surfaces from Call/DoString via errors.As; inside
+// Lua the same error appears as its Error() string.
+type GoPanicError struct{ Value any }
+
+func (e *GoPanicError) Error() string { return fmt.Sprintf("go panic in Lua callback: %v", e.Value) }
+
+// newGoPanicError builds the LuaError a protected call returns for a recovered
+// Go panic: a string Lua value (so script-level pcall/error see a normal
+// message) that wraps the typed GoPanicError (so the host can detect it).
+func newGoPanicError(r any) *LuaError {
+	gpe := &GoPanicError{Value: r}
+	return &LuaError{value: MkString(gpe.Error()), goPanic: gpe}
+}
+
 // NewState builds a fresh state with an empty globals table and registry.
 //
 // With no options it opens no libraries and takes its limits from the package
@@ -243,15 +276,16 @@ func NewState(opts ...Option) *LState {
 	b := newBuildOpts(opts)
 	b.cfg.validate()
 	L := &LState{
-		stack:     make([]Value, luaMinStack*2+extraStack),
-		globals:   newTable(),
-		registry:  newTable(),
-		allowHook: true,
-		errReg:    -1,
-		errUpval:  -1,
-		status:    coRunning,
-		rng:       newRNG(),
-		cfg:       b.cfg,
+		stack:           make([]Value, luaMinStack*2+extraStack),
+		globals:         newTable(),
+		registry:        newTable(),
+		allowHook:       true,
+		errReg:          -1,
+		errUpval:        -1,
+		status:          coRunning,
+		rng:             newRNG(),
+		cfg:             b.cfg,
+		recoverGoPanics: b.recoverGoPanics,
 	}
 	L.co = &coState{mainThread: L}
 	switch b.libs {

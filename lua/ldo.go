@@ -257,7 +257,15 @@ func (L *LState) pcall(funcIdx, nresults int) (err error) {
 		if r := recover(); r != nil {
 			le, ok := r.(*LuaError)
 			if !ok {
-				panic(r)
+				// A non-LuaError panic (e.g. a registered Go callback panicked).
+				// Default: re-panic, PUC-faithful (PUC's pcall does not catch a C
+				// abort either). In protected mode the host opted to absorb it:
+				// wrap as a catchable error and fall through to the unwind below
+				// so the VM is restored and this State stays reusable.
+				if !L.recoverGoPanics {
+					panic(r)
+				}
+				le = newGoPanicError(r)
 			}
 			// Unwind: close any upvalues/tbc opened by the failed call, then
 			// restore the caller's frame and stack.

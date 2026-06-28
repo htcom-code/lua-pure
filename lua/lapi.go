@@ -45,6 +45,7 @@ func (L *LState) CallProto(p *Proto, nresults int) ([]Value, error) {
 	funcIdx := L.top
 	L.push(L.loadProto(p))
 	if err := L.pcall(funcIdx, nresults); err != nil {
+		L.top = funcIdx // pop the call setup so a failed call leaves the stack clean (reusable state)
 		return nil, err
 	}
 	res := make([]Value, L.top-funcIdx)
@@ -64,6 +65,7 @@ func (L *LState) CallProtoEnv(p *Proto, env *Table, nresults int) ([]Value, erro
 	funcIdx := L.top
 	L.push(L.loadProtoEnv(p, mkTable(env)))
 	if err := L.pcall(funcIdx, nresults); err != nil {
+		L.top = funcIdx // pop the call setup so a failed call leaves the stack clean (reusable state)
 		return nil, err
 	}
 	res := make([]Value, L.top-funcIdx)
@@ -143,6 +145,7 @@ func (L *LState) Call(fn Value, args []Value, nresults int) ([]Value, error) {
 		L.push(a)
 	}
 	if err := L.pcall(funcIdx, nresults); err != nil {
+		L.top = funcIdx // pop the call setup so a failed call leaves the stack clean (reusable state)
 		return nil, err
 	}
 	res := make([]Value, L.top-funcIdx)
