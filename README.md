@@ -1,5 +1,9 @@
 # LuaPure — a pure Go Lua VM
 
+📖 **Docs:** `make doc-web` serves the API reference locally (pkgsite, the
+pkg.go.dev engine); `make doc` prints it as text. The repository is private, so
+there is no public pkg.go.dev page yet.
+
 `luapure` is a pure-Go implementation of **PUC-Lua 5.4**: its instruction set,
 single-pass compiler, virtual machine, standard libraries, and semantics are
 ported directly from the reference C sources (`lua-5.4.8/src`). It is written
