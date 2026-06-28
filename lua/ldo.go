@@ -234,7 +234,7 @@ func (L *LState) call(funcIdx, nresults int) {
 	if L.coSyncActive && L.noYield == 0 {
 		panic(promoteSig)
 	}
-	if L.nCcalls >= MaxCCalls {
+	if L.nCcalls >= L.cfg.maxCCalls {
 		L.runtimeError("C stack overflow")
 	}
 	L.nCcalls++

@@ -40,16 +40,7 @@ func (L *LState) RunWith(env *Table, src, name string) ([]Value, error) {
 // code or files (load, loadfile, dofile) are removed. collectgarbage is kept.
 // For per-call confinement of a specific chunk, also use RunWith with a custom
 // _ENV; for a time limit, SetContext.
-func NewSandbox() *LState {
-	L := NewState()
-	L.OpenBase()
-	L.OpenString()
-	L.OpenTable()
-	L.OpenMath()
-	L.OpenUTF8()
-	L.OpenCoroutine()
-	for _, name := range []string{"load", "loadfile", "dofile"} {
-		L.SetGlobal(name, Nil)
-	}
-	return L
-}
+//
+// NewSandbox() is shorthand for NewState(WithSandbox()); use the option form to
+// combine it with other options, e.g. NewState(WithSandbox(), WithContext(ctx)).
+func NewSandbox() *LState { return NewState(WithSandbox()) }

@@ -3,8 +3,7 @@ package luapure
 // luaconf.go consolidates the configuration knobs that PUC Lua keeps in
 // luaconf.h (plus a few tunable limits PUC #defines in .c files). PUC bakes
 // these in at compile time — one value for the whole library, never per
-// lua_State — so the faithful Go analog is package-level configuration, not
-// per-State state.
+// lua_State — so the faithful Go analog is package-level configuration.
 //
 // The Tunable vars below default to stock PUC values, reproducing PUC behavior
 // out of the box. An embedder may override them, but the contract mirrors PUC's
@@ -12,6 +11,13 @@ package luapure
 // Mutating a Tunable while a State is executing races with that State and is
 // not supported. There is no runtime validation (PUC has none either); a
 // nonsensical value (e.g. a zero or negative limit) yields undefined behavior.
+//
+// Three of these are read while a State runs and can additionally be overridden
+// per State at construction — see the NewState options WithMaxStack,
+// WithMaxCCalls, and WithMaxTableArraySize. Each State snapshots the package
+// globals at NewState; an option then overrides its own copy. The rest stay
+// process-wide because they are read by the stateless compiler, which has no
+// State to carry per-instance config.
 
 // --- Tunable limits (settable; defaults match stock PUC luaconf.h) ---
 

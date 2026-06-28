@@ -61,6 +61,21 @@ func main() {
 }
 ```
 
+`NewState` also takes functional options, so library opening and limits can be
+folded into the constructor (no options = the two-step form above):
+
+```go
+// Open the standard libraries and cap the value stack for this state only.
+L := luapure.NewState(luapure.WithOpenLibs(), luapure.WithMaxStack(50000))
+
+// A confined state for untrusted code (safe libraries only, time-limited).
+L := luapure.NewState(luapure.WithSandbox(), luapure.WithContext(ctx))
+```
+
+`WithMaxStack`/`WithMaxCCalls`/`WithMaxTableArraySize` override the package
+globals (`luaconf.go`) for that state alone; other states keep the process-wide
+defaults.
+
 More runnable examples (tables, userdata, sandboxing, structured errors) live in
 [`lua/example_test.go`](lua/example_test.go) and render in `make doc-web`.
 

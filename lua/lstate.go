@@ -52,6 +52,11 @@ type LState struct {
 	finGCTick  int // instructions since the last finalizer poll (finGCPoll)
 	weakGCTick int // finalizer polls since the last weak-table GC nudge
 
+	// cfg holds the per-State limit overrides (MaxStack/MaxCCalls/
+	// MaxTableArraySize), snapshot from the package globals at NewState and then
+	// settled by the NewState options. Coroutines inherit it via newThread.
+	cfg stateConfig
+
 	// ctx, when non-nil, cancels execution: the VM checks ctx.Err() at the
 	// finalizer-poll gate (every finGCPoll instructions) and raises a catchable
 	// error when the context is done (SetContext). Inherited by coroutines.
@@ -223,7 +228,14 @@ func (e *LuaError) Value() Value { return e.value }
 func (e *LuaError) Traceback() string { return e.traceback }
 
 // NewState builds a fresh state with an empty globals table and registry.
-func NewState() *LState {
+//
+// With no options it opens no libraries and takes its limits from the package
+// globals (luaconf.go) — identical to earlier releases; call OpenLibs yourself.
+// Options layer on top: WithOpenLibs/WithSandbox open libraries, WithContext
+// sets a cancellation context, and WithMaxStack/WithMaxCCalls/
+// WithMaxTableArraySize override those limits for this State only.
+func NewState(opts ...Option) *LState {
+	b := newBuildOpts(opts)
 	L := &LState{
 		stack:     make([]Value, luaMinStack*2+extraStack),
 		globals:   newTable(),
@@ -233,8 +245,18 @@ func NewState() *LState {
 		errUpval:  -1,
 		status:    coRunning,
 		rng:       newRNG(),
+		cfg:       b.cfg,
 	}
 	L.co = &coState{mainThread: L}
+	switch b.libs {
+	case libsAll:
+		L.OpenLibs()
+	case libsSandbox:
+		L.openSandboxLibs()
+	}
+	if b.hasCtx {
+		L.ctx = b.ctx
+	}
 	return L
 }
 
@@ -259,16 +281,16 @@ func (L *LState) checkstack(n int) {
 	// room (PUC luaD_growstack).
 	if L.inErrfunc {
 		// Overflowing even the reserve: PUC raises LUA_ERRERR.
-		if need > MaxStack+ErrorStackReserve {
+		if need > L.cfg.maxStack+ErrorStackReserve {
 			L.runtimeError("error in error handling")
 		}
-	} else if need > MaxStack {
+	} else if need > L.cfg.maxStack {
 		L.runtimeError("stack overflow")
 	}
 	if alloc := need + extraStack; alloc > len(L.stack) {
 		want := growSize(len(L.stack), alloc)
-		if want > MaxStack+ErrorStackReserve {
-			want = MaxStack + ErrorStackReserve
+		if want > L.cfg.maxStack+ErrorStackReserve {
+			want = L.cfg.maxStack + ErrorStackReserve
 		}
 		ns := make([]Value, want)
 		copy(ns, L.stack)

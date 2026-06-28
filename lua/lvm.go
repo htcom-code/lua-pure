@@ -143,7 +143,7 @@ func (L *LState) newindex(tbl *Table, key, val Value) {
 	// (Go can't catch a real OOM): raise only when this key would extend the
 	// array part past the ceiling, so non-array inserts and bounded tables are
 	// unaffected.
-	if MaxTableArraySize > 0 && len(tbl.arr) >= MaxTableArraySize {
+	if L.cfg.maxTableArraySize > 0 && len(tbl.arr) >= L.cfg.maxTableArraySize {
 		if k, ok := arrayIndex(key); ok && k == int64(len(tbl.arr))+1 && !val.IsNil() {
 			L.runtimeError("not enough memory")
 		}

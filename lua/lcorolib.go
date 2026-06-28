@@ -52,6 +52,7 @@ func (L *LState) newThread() *LState {
 		pkgLoaded: L.pkgLoaded,
 		pkgTable:  L.pkgTable,
 		basicMT:   L.basicMT,
+		cfg:       L.cfg, // inherit the parent's per-State limits
 		allowHook: true,
 		errReg:    -1,
 		errUpval:  -1,
@@ -134,7 +135,7 @@ func (L *LState) resume(co *LState, args []Value) ([]Value, *LuaError) {
 	// goroutine (resumeSync recurses into execute), so deeply nested resume must
 	// be bounded here — like luaD_call's check — or the Go stack overflows
 	// instead of raising a catchable "C stack overflow".
-	if L.nCcalls >= MaxCCalls {
+	if L.nCcalls >= L.cfg.maxCCalls {
 		L.status = coRunning
 		return nil, &LuaError{value: MkString("C stack overflow")}
 	}
@@ -268,7 +269,7 @@ func coResume(L *LState) int {
 	// The results move onto the resumer's stack; if they would overflow it,
 	// report it as a value rather than raising (PUC luaB_coresume checks
 	// lua_checkstack(nres+1) and returns false + this message).
-	if L.top+len(vals)+1 > MaxStack {
+	if L.top+len(vals)+1 > L.cfg.maxStack {
 		L.Push(False)
 		L.Push(MkString("too many results to resume"))
 		return 2

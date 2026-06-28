@@ -208,3 +208,17 @@ func ExampleLState_Close() {
 	fmt.Println("ok")
 	// Output: ok
 }
+
+// NewState options fold setup into one call: open the standard libraries and
+// cap a limit for this state only. WithMaxStack/WithMaxCCalls/
+// WithMaxTableArraySize override the package globals for this state, leaving
+// other states on the process-wide defaults.
+func ExampleNewState_options() {
+	L := luapure.NewState(luapure.WithOpenLibs(), luapure.WithMaxStack(50000))
+	res, err := L.DoString(`return math.max(2, 7)`, "=opts")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(res[0].AsInt())
+	// Output: 7
+}
