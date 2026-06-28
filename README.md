@@ -19,6 +19,51 @@ Files keep PUC's `l`-prefixed names. Where one PUC source is split across
 several Go files (Go favours smaller focused files), the parts share the PUC
 parent name with a suffix.
 
+See [`ROADMAP.md`](ROADMAP.md) for what tracks next (PUC-Lua 5.5),
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for the port discipline and test gate, and
+[`CHANGELOG.md`](CHANGELOG.md) for release history.
+
+## Install
+
+```sh
+go get github.com/htcom-code/lua-pure/lua
+```
+
+## Quickstart
+
+Embed the VM, exchange a value with a script, and read the result back:
+
+```go
+package main
+
+import (
+	"fmt"
+
+	luapure "github.com/htcom-code/lua-pure/lua"
+)
+
+func main() {
+	L := luapure.NewState()
+	L.OpenLibs()
+
+	// Expose a Go function to Lua.
+	L.Register("greet", func(L *luapure.LState) int {
+		who := L.CheckString(1)
+		L.Push(luapure.MkString("hello, " + who))
+		return 1
+	})
+
+	res, err := L.DoString(`return greet("world"), 6 * 7`, "=quickstart")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(res[0].Str(), res[1].AsInt()) // hello, world 42
+}
+```
+
+More runnable examples (tables, userdata, sandboxing, structured errors) live in
+[`lua/example_test.go`](lua/example_test.go) and render in `make doc-web`.
+
 ## Repository layout
 
 The engine is a single Go package (one package = one directory, so it stays

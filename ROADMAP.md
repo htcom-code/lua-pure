@@ -1,0 +1,76 @@
+# Roadmap
+
+luapure is a **pure-Go port of PUC-Lua**. Today it tracks the **5.4.8** reference
+release: its instruction set, single-pass compiler, virtual machine, standard
+libraries, and observable semantics are ported from `lua-5.4.8/src`, and a dump
+is byte-identical to `luac 5.4.8` on a 64-bit little-endian host.
+
+The project's standing commitment is to **follow PUC-Lua upstream** — to keep
+porting new reference releases as they ship, the same way 5.4.8 was ported:
+PUC-source-first, behaviour matched against the C sources, regressions pinned by
+the conformance and ext-probe suites.
+
+## Versioning intent
+
+- **Current baseline — PUC-Lua 5.4.8.** Complete and the active line. Bug fixes
+  and performance work land here.
+- **Next — PUC-Lua 5.5.** As the 5.5 line stabilizes upstream, luapure will port
+  it the same way: read the 5.5 sources first, port instruction/library/semantic
+  changes, extend the conformance fixtures to the 5.5 test suite, and keep
+  `luac`-byte-identity against the matching reference `luac`.
+
+We track PUC releases rather than inventing language extensions; divergences are
+limited to the Go-native adaptations documented in the README (GC, error
+unwinding, coroutines, memory-limit caps).
+
+## Done (5.4.8 line)
+
+- PUC 5.4.8 instruction set, single-pass lexer+parser+codegen (no AST), and the
+  VM dispatch loop.
+- Standard libraries: base, string (incl. `pack`/`unpack`, patterns), table,
+  math (xoshiro256\*\* PRNG, bit-identical), os, io, coroutine, utf8, debug,
+  `require`/`package`.
+- Precompiled-chunk dump/undump byte-identical to `luac 5.4.8`; loads `luac`
+  output and vice versa.
+- Embedding API: table exchange, Go-callback arg checking, `ToValue`/`FromValue`
+  conversion, structured `*LuaError`, userdata + metatables + uservalues,
+  sandboxing (`NewSandbox`/`RunWith`), context cancellation (`SetContext`), file
+  loading, and lifecycle `Close`.
+- Debugger: breakpoints / step / pause core, exposed over the Model Context
+  Protocol (stdio + HTTP) and the Debug Adapter Protocol (TCP).
+- Conformance: **30/33** of the official Lua 5.4 test files pass — the PASS-able
+  ceiling (see Known limits).
+
+## Known limits (won't-fix on the 5.4 line)
+
+These are structural consequences of being a Go-native, embeddable VM, not gaps
+to close:
+
+- **`gc.lua`** — exercises `collectgarbage("count"/"step")` byte accounting. GC
+  is delegated to the Go runtime, which owns the heap, so exact Lua-side
+  accounting isn't available.
+- **`files.lua` (process-dependent tail)** — `os.execute`/`io.popen` and
+  seekable-stdin assumptions depend on the host process/OS, not the VM.
+- **`all.lua` / `main.lua`** — driver scripts, not behavioural fixtures.
+
+→ 30/33 is "every file that *can* pass, passes."
+
+## Planned / under consideration (5.4 line)
+
+Performance and surface work, ordered by current intent — not commitments:
+
+- **Execution alloc churn** — reduce per-instruction allocation frequency to cut
+  GC pressure (measurement-first: reproduce bench → profile → optimize).
+- **Table get/set hot path** — trim bounds-check / indirection cost in
+  `rawget`/`rawgetInt` (profile-identified hot spot).
+- **Instruction-budget execution limit** — an optional step/instruction cap for
+  sandboxes, reusing the debug-hook count mechanism (deferred; context-based
+  cancellation already ships).
+- **Runtime string interning** — on hold; compile-time interning already covers
+  the measured win. Reopen only with a benchmark justification.
+
+## Contributing to the roadmap
+
+The porting discipline (PUC-source-first, behaviour-matched, ext-probe pinned)
+is in [`CONTRIBUTING.md`](CONTRIBUTING.md). Release history is in
+[`CHANGELOG.md`](CHANGELOG.md).
