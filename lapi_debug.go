@@ -1,5 +1,7 @@
 package luapure
 
+import "errors"
+
 // Go-native debugging surface for embedders building a debugger (a DAP server,
 // a CLI console, a tracer). PUC exposes this through the Lua `debug` library and
 // the C lua_Hook / lua_getstack / lua_getlocal calls; here the same primitives
@@ -272,6 +274,96 @@ func (f Frame) Vararg(n int) (v Value, ok bool) {
 		return Nil, false
 	}
 	return f.L.stack[slot], true
+}
+
+// Eval compiles and runs a Lua expression in the scope of the frame, the way a
+// debugger console's "print" or a watch expression does: a bare name resolves
+// to the frame's locals first, then its upvalues, then globals, and an
+// assignment writes back to whichever it found (or to a new global). The
+// expression's results are returned; a statement (e.g. "x = 1") is accepted too.
+//
+// Eval is for use while the program is paused at the frame (from a Debugger
+// OnStop handler). The debug hook is suppressed for the duration, so evaluating
+// does not itself trip breakpoints or recurse into the handler.
+func (f Frame) Eval(expr string) ([]Value, error) {
+	saved := f.L.allowHook
+	f.L.allowHook = false
+	defer func() { f.L.allowHook = saved }()
+
+	env := f.scopeEnv()
+	// Prefer expression form so the value comes back; fall back to a statement
+	// chunk only when "return <expr>" does not compile.
+	res, err := f.L.RunWith(env, "return "+expr, "=(eval)")
+	if err == nil {
+		return res, nil
+	}
+	var ce *CompileError
+	if !errors.As(err, &ce) {
+		return nil, err // a runtime error from the expression: report it as-is
+	}
+	return f.L.RunWith(env, expr, "=(eval)")
+}
+
+// scopeEnv builds a proxy _ENV table whose __index/__newindex resolve names
+// against the frame's locals, then upvalues, then the real globals — so an
+// evaluated chunk sees the frame's scope.
+func (f Frame) scopeEnv() *Table {
+	locals := map[string]int{}
+	for _, lv := range f.Locals() {
+		if lv.Name != "" && lv.Name[0] != '(' { // skip "(temporary)"/"(vararg)"
+			locals[lv.Name] = lv.Index // a later (inner) declaration shadows
+		}
+	}
+	ups := map[string]int{}
+	for n := 1; ; n++ {
+		nm, _, ok := f.Upvalue(n)
+		if !ok {
+			break
+		}
+		if nm != "" && nm != "(no name)" && nm != "_ENV" {
+			ups[nm] = n
+		}
+	}
+	gv := mkTable(f.L.globals)
+	proxy := newTable()
+	mt := newTable()
+	mt.rawset(MkString("__index"), NewGoFunc("__index", func(L *LState) int {
+		key := L.Arg(2)
+		if key.IsString() {
+			name := key.Str()
+			if idx, ok := locals[name]; ok {
+				_, v, _ := f.Local(idx)
+				L.Push(v)
+				return 1
+			}
+			if un, ok := ups[name]; ok {
+				_, v, _ := f.Upvalue(un)
+				L.Push(v)
+				return 1
+			}
+		}
+		L.Push(L.indexGet(gv, key)) // fall back to globals (honouring their metatable)
+		return 1
+	}))
+	mt.rawset(MkString("__newindex"), NewGoFunc("__newindex", func(L *LState) int {
+		key := L.Arg(2)
+		val := L.Arg(3)
+		if key.IsString() {
+			name := key.Str()
+			if idx, ok := locals[name]; ok {
+				f.SetLocal(idx, val)
+				return 0
+			}
+			if un, ok := ups[name]; ok {
+				f.SetUpvalue(un, val)
+				return 0
+			}
+		}
+		L.settable(gv, key, val)
+		return 0
+	}))
+	proxy.meta = mt
+	return proxy
 }
 
 // NumUpvalues returns the count of upvalues of the frame's function.

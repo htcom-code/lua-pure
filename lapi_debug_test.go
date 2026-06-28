@@ -193,6 +193,74 @@ func TestFrameWalk(t *testing.T) {
 	}
 }
 
+// Frame.Eval evaluates an expression in the stopped frame's scope: it reads
+// locals and upvalues, writes back to them, and falls through to globals.
+func TestFrameEval(t *testing.T) {
+	L := luapure.NewState()
+	L.OpenLibs()
+
+	done := false
+	L.SetGoHook(func(L *luapure.LState, ev luapure.HookEvent, line int) {
+		if ev != luapure.HookLine || done {
+			return
+		}
+		f, _ := L.Frame(0)
+		// Only act once both locals are in scope (line of the `return`).
+		res, err := f.Eval("a + b")
+		if err != nil || len(res) == 0 || res[0].AsInt() != 30 {
+			return // a, b not both live yet on this line
+		}
+		done = true
+		// Read a global through the proxy fall-through.
+		gr, err := f.Eval("G * 2")
+		if err != nil || gr[0].AsInt() != 14 {
+			t.Errorf("global eval = %v (err %v), want 14", gr, err)
+		}
+		// Write back to a local: bump b so the program returns a+b == 100+a.
+		if _, err := f.Eval("b = 100"); err != nil {
+			t.Errorf("assignment eval failed: %v", err)
+		}
+	}, luapure.MaskLine, 0)
+
+	L.SetGlobal("G", luapure.Int(7))
+	res, err := L.DoString("local a = 10\nlocal b = 20\nreturn a + b\n", "=t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !done {
+		t.Fatal("never evaluated a+b == 30 at the right line")
+	}
+	if got := res[0].AsInt(); got != 110 {
+		t.Fatalf("result = %d, want 110 (b reassigned to 100 via Eval)", got)
+	}
+}
+
+// Eval surfaces a runtime error from the expression rather than retrying it as
+// a statement.
+func TestFrameEvalError(t *testing.T) {
+	L := luapure.NewState()
+	L.OpenLibs()
+
+	checked := false
+	L.SetGoHook(func(L *luapure.LState, ev luapure.HookEvent, line int) {
+		if ev != luapure.HookLine || checked {
+			return
+		}
+		f, _ := L.Frame(0)
+		checked = true
+		if _, err := f.Eval("nosuch.field"); err == nil {
+			t.Error("expected an error indexing a nil global")
+		}
+	}, luapure.MaskLine, 0)
+
+	if _, err := L.DoString("local z = 1\nreturn z\n", "=t"); err != nil {
+		t.Fatal(err)
+	}
+	if !checked {
+		t.Fatal("hook never ran")
+	}
+}
+
 // A Go hook and a Lua debug.sethook hook coexist, both firing.
 func TestGoHookCoexistsWithLuaHook(t *testing.T) {
 	L := luapure.NewState()
