@@ -34,6 +34,17 @@ func (L *LState) OpenMath() {
 		"tointeger":  mathToInteger,
 		"type":       mathType,
 		"ult":        mathUlt,
+		// Deprecated 5.1/5.2-era functions kept by PUC's default build via
+		// LUA_COMPAT_MATHLIB (on through LUA_COMPAT_5_3). Present so scripts
+		// written for a stock PUC 5.4 build keep working.
+		"sinh":  math1(math.Sinh),
+		"cosh":  math1(math.Cosh),
+		"tanh":  math1(math.Tanh),
+		"log10": math1(math.Log10),
+		"pow":   mathPow,
+		"frexp": mathFrexp,
+		"ldexp": mathLdexp,
+		"atan2": mathAtan, // 5.4's atan(y,x) is the old atan2(y,x)
 	})
 	m.rawset(MkString("pi"), Float(math.Pi))
 	m.rawset(MkString("huge"), Float(math.Inf(1)))
@@ -102,6 +113,32 @@ func mathAtan(L *LState) int {
 		x = L.checkNumber(2)
 	}
 	L.Push(Float(math.Atan2(y, x)))
+	return 1
+}
+
+// mathPow is the deprecated math.pow (LUA_COMPAT_MATHLIB): x^y, always a float
+// (PUC lua_pushnumber).
+func mathPow(L *LState) int {
+	x := L.checkNumber(1)
+	y := L.checkNumber(2)
+	L.Push(Float(math.Pow(x, y)))
+	return 1
+}
+
+// mathFrexp is the deprecated math.frexp: splits x into a fraction in [0.5,1)
+// and an integer exponent with x == frac * 2^exp; returns (frac, exp).
+func mathFrexp(L *LState) int {
+	frac, exp := math.Frexp(L.checkNumber(1))
+	L.Push(Float(frac))
+	L.Push(Int(int64(exp)))
+	return 2
+}
+
+// mathLdexp is the deprecated math.ldexp: x * 2^exp.
+func mathLdexp(L *LState) int {
+	x := L.checkNumber(1)
+	e := L.checkInt(2)
+	L.Push(Float(math.Ldexp(x, int(e))))
 	return 1
 }
 

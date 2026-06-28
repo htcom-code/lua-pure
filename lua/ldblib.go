@@ -13,25 +13,36 @@ import (
 func (L *LState) OpenDebug() {
 	t := newTable()
 	setFuncs(t, map[string]GoFunc{
-		"getinfo":      dbgGetinfo,
-		"traceback":    dbgTraceback,
-		"sethook":      dbgSethook,
-		"gethook":      dbgGethook,
-		"getlocal":     dbgGetlocal,
-		"setlocal":     dbgSetlocal,
-		"getupvalue":   dbgGetupvalue,
-		"setupvalue":   dbgSetupvalue,
-		"upvalueid":    dbgUpvalueid,
-		"upvaluejoin":  dbgUpvaluejoin,
-		"getmetatable": dbgGetmetatable,
-		"setmetatable": dbgSetmetatable,
-		"getregistry":  dbgGetregistry,
-		"getuservalue": dbgGetuservalue,
-		"setuservalue": dbgSetuservalue,
-		"traceback2":   dbgTraceback,
-		"debug":        dbgDebug,
+		"getinfo":        dbgGetinfo,
+		"traceback":      dbgTraceback,
+		"sethook":        dbgSethook,
+		"gethook":        dbgGethook,
+		"getlocal":       dbgGetlocal,
+		"setlocal":       dbgSetlocal,
+		"getupvalue":     dbgGetupvalue,
+		"setupvalue":     dbgSetupvalue,
+		"upvalueid":      dbgUpvalueid,
+		"upvaluejoin":    dbgUpvaluejoin,
+		"getmetatable":   dbgGetmetatable,
+		"setmetatable":   dbgSetmetatable,
+		"getregistry":    dbgGetregistry,
+		"getuservalue":   dbgGetuservalue,
+		"setuservalue":   dbgSetuservalue,
+		"setcstacklimit": dbgSetcstacklimit,
+		"traceback2":     dbgTraceback,
+		"debug":          dbgDebug,
 	})
 	L.registerTable("debug", t)
+}
+
+// dbgSetcstacklimit is PUC's deprecated debug.setcstacklimit. In 5.4 the C-stack
+// limit is fixed, so lua_setcstacklimit ignores its argument and returns
+// LUAI_MAXCCALLS; we mirror that, returning the configured MaxCCalls (200 in the
+// stock build). Kept only for surface compatibility with the default PUC build.
+func dbgSetcstacklimit(L *LState) int {
+	L.checkInt(1) // validate the argument like PUC (luaL_checkinteger), then ignore it
+	L.Push(Int(int64(MaxCCalls)))
+	return 1
 }
 
 // getThreadArg implements ldblib.c's getthread: if argument 1 is a thread,
