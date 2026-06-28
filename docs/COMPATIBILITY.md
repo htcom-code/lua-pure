@@ -101,7 +101,9 @@ reference (`make doc` / `make doc-web`) for signatures.
   analog of `luaL_requiref` / `package.preload`).
 - **Go ⇄ Lua data** — `ToValue` / `FromValue` conversion, full userdata with
   metatables and uservalues (`NewUserData`/`NewMetatable`/`CheckUserData`),
-  structured errors (`*LuaError` with `Value()`/`Traceback()`).
+  structured errors (`*LuaError` with `Value()`/`Traceback()`). A callback raises
+  errors with `ArgError`/`TypeError`, `RaiseError(format, …)` (PUC `luaL_error`,
+  position-prefixed) or `RaiseValue(v)` (PUC `lua_error`, an arbitrary value).
 - **Debugging** — a Go-native debug hook (`SetGoHook`) and a `Debugger`/`Session`
   with breakpoints/stepping, exposed over the Model Context Protocol (`debugmcp`)
   and the Debug Adapter Protocol (`debugdap`).

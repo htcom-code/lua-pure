@@ -51,3 +51,21 @@ func (L *LState) ArgError(n int, msg string) { L.argError(n, msg) }
 // TypeError raises a "bad argument" error reporting that argument n was the
 // wrong type, naming the expected type (luaL_typeerror).
 func (L *LState) TypeError(n int, want string) { L.typeArgError(n, want) }
+
+// RaiseError raises a Lua error from a Go callback with a formatted message,
+// prefixed with the caller's position ("source:line: "), like PUC luaL_error.
+// It does not return (the error unwinds via panic/recover); the int result lets
+// a callback write `return L.RaiseError("bad value %v", v)`, mirroring PUC's
+// `return luaL_error(...)`.
+func (L *LState) RaiseError(format string, args ...any) int {
+	L.errorf(format, args...)
+	return 0 // unreachable: errorf always raises
+}
+
+// RaiseValue raises v as the error object, like PUC lua_error — use it to raise
+// a non-string error such as a structured error table. As with RaiseError it
+// does not return; the int result is for `return L.RaiseValue(t.Value())`.
+func (L *LState) RaiseValue(v Value) int {
+	L.throw(v)
+	return 0 // unreachable: throw always raises
+}

@@ -4,8 +4,9 @@
 // the recommended way to do blocking I/O in a callback — a plain <-ch would
 // ignore the deadline (the VM only checks the context between instructions).
 //
-// recv follows the Lua idiom of returning (value) on success and (nil, errmsg)
-// on failure (like io.read), so a timeout is a normal return the script checks.
+// On timeout recv raises a clean, position-prefixed error with L.RaiseError
+// (PUC luaL_error), which the script catches with pcall — so a stuck receive
+// surfaces as a normal Lua error instead of hanging.
 package main
 
 import (
@@ -38,9 +39,8 @@ func bindChan(L *luapure.LState, c *luaChan) {
 			L.Push(L.ToValue(v))
 			return 1
 		case <-ctx.Done():
-			L.Push(luapure.Nil)
-			L.Push(luapure.MkString("timed out: " + ctx.Err().Error()))
-			return 2
+			// Raise a clean, position-prefixed error the script can pcall.
+			return L.RaiseError("recv timed out: %v", ctx.Err())
 		}
 	}))
 	mt.SetStr("__index", m.Value())
@@ -70,12 +70,12 @@ func main() {
 	defer cancelB()
 	L.SetContext(ctxB)
 	start := time.Now()
-	res, err = L.DoString(`local v, err = ch:recv(); return v == nil, err`, "=recvB")
+	res, err = L.DoString(`local ok, err = pcall(function() return ch:recv() end); return ok, err`, "=recvB")
 	L.SetContext(nil)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("B: nil=%v after %v (%s)\n",
+	fmt.Printf("B: ok=%v after %v (%s)\n",
 		res[0].AsBool(), time.Since(start).Round(10*time.Millisecond), res[1].Str())
-	// B: nil=true after 50ms (timed out: context deadline exceeded)
+	// B: ok=false after 50ms (recvB:1: recv timed out: context deadline exceeded)
 }
