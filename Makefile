@@ -1,40 +1,47 @@
-.PHONY: build vet test conformance-ext conformance check doc doc-web
+# luapure — build, test, perf, and docs targets. Run `make` for the list.
 
-# Port for the local pkgsite docs server (override: make doc-web DOC_PORT=8080).
-DOC_PORT ?= 6060
+DOC_PORT ?= 6060   # local pkgsite port (override: make doc-web DOC_PORT=8080)
 
-# Compile everything.
-build:
+.DEFAULT_GOAL := help
+.PHONY: help build vet fmt test conformance-ext conformance bench check doc doc-web
+
+help: ## List the available targets
+	@awk -F':.*## ' '/^[a-z][a-z-]*:.*## /{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+# --- build & static checks ---
+
+build: ## Compile every package (engine, cmds, examples)
 	go build ./...
 
-vet:
+vet: ## Run go vet
 	go vet ./...
 
-# All Go tests, race-enabled: unit + examples + dump byte-identity + the PUC
-# behaviour-probe extension suite (TestConformanceExtSuite).
-test:
+fmt: ## Format all Go code in place (gofmt)
+	gofmt -w .
+
+# --- tests ---
+
+test: ## All Go tests, race-enabled (unit + examples + byte-identity + ext suite)
 	go test -race -count=1 ./...
 
-# Just the PUC behaviour-probe extension suite (also covered by `make test`),
-# for a quick focused run.
-conformance-ext:
+conformance-ext: ## Only the PUC behaviour-probe ext suite (quick focused run)
 	go test -race -count=1 -run TestConformanceExtSuite ./conformance
 
-# The Lua 5.4 conformance fixtures, run by the standalone driver (not part of
-# `go test`). verybig is slow, so allow a longer per-file timeout.
-conformance:
+conformance: ## Official Lua 5.4 fixtures via the standalone driver
 	go run ./cmd/conformance -timeout 60s
 
-# The full gate: build, vet, every Go test (conformance-ext included), and the
-# conformance driver. Run this before pushing.
-check: build vet test conformance
+check: build vet test conformance ## Full pre-push gate (build + vet + test + conformance)
 
-# Print the engine package's exported API documentation as text.
-doc:
+# --- performance ---
+
+bench: ## Engine micro-benchmarks — the perf-regression guardrail
+	go test -run '^$$' -bench . -benchmem ./lua
+
+# --- docs ---
+
+doc: ## Print the engine's exported API as text
 	go doc -all ./lua
 
-# Serve browsable HTML docs locally with pkgsite (the pkg.go.dev engine),
-# fetched on demand via `go run`. The embedding API examples render here.
-doc-web:
+doc-web: ## Serve browsable HTML API docs locally (pkgsite)
 	@echo "Docs: http://localhost:$(DOC_PORT)/github.com/htcom-code/lua-pure/lua  (Ctrl-C to stop)"
 	go run golang.org/x/pkgsite/cmd/pkgsite@latest -http=localhost:$(DOC_PORT) -open .
