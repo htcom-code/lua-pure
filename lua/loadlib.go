@@ -11,6 +11,59 @@ import (
 // loadstring, dofile. Enough of the package machinery to satisfy the test
 // suite's `require"x"` headers and `load(code)` usage.
 
+// Requiref opens a host-provided module the way the standard libraries install
+// themselves (the embedding-side analog of PUC's luaL_requiref). It calls open
+// once to build the module table, caches it in package.loaded[name] so a later
+// require(name) returns the same table, and — when glb is true — also binds it
+// to the global name. It is idempotent: an already-loaded module is returned
+// without calling open again. The package library must be open (OpenLibs) for
+// the require/loaded integration; the global binding works regardless. Returns
+// the module table.
+//
+//	L.Requiref("mylib", func(L *luapure.LState) *luapure.Table {
+//	    t := luapure.NewTable()
+//	    t.SetStr("greet", luapure.NewGoFunc("greet", greet))
+//	    return t
+//	}, true) // installs global `mylib`, and require("mylib") returns it
+func (L *LState) Requiref(name string, open func(*LState) *Table, glb bool) *Table {
+	if L.pkgLoaded != nil {
+		if cur := L.pkgLoaded.rawgetStr(name); cur.IsTable() {
+			if glb {
+				L.SetGlobal(name, cur)
+			}
+			return cur.tablev()
+		}
+	}
+	mod := open(L)
+	mv := mkTable(mod)
+	if L.pkgLoaded != nil {
+		L.pkgLoaded.rawset(MkString(name), mv)
+	}
+	if glb {
+		L.SetGlobal(name, mv)
+	}
+	return mod
+}
+
+// Preload registers open as a lazy loader for module name: open is not called
+// until the first require(name), which then caches the module in package.loaded
+// like any other require. This is the embedding-side analog of setting
+// package.preload[name] to a luaopen_* function in PUC. The package library must
+// be open (OpenLibs); otherwise this is a no-op.
+func (L *LState) Preload(name string, open func(*LState) *Table) {
+	if L.pkgTable == nil {
+		return
+	}
+	pre := L.pkgTable.rawgetStr("preload")
+	if !pre.IsTable() {
+		return
+	}
+	pre.tablev().rawset(MkString(name), NewGoFunc(name, func(L *LState) int {
+		L.Push(mkTable(open(L)))
+		return 1
+	}))
+}
+
 // openPackage creates the package table and installs require. Core libraries
 // opened afterwards register themselves in package.loaded via registerTable.
 func (L *LState) openPackage() {
