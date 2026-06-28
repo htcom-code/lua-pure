@@ -52,19 +52,32 @@ the three that cannot).
 
 Full detail in [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md).
 
-## Planned / under consideration (5.4 line)
+## Performance — an ongoing commitment on the 5.4 line
 
-Performance and surface work, ordered by current intent — not commitments:
+**Performance work on the 5.4 line continues indefinitely.** Functional parity
+with PUC is reached, but luapure keeps narrowing the speed/allocation gap to the
+reference. The discipline is fixed:
+
+- **Measurement-first** — reproduce a benchmark, profile, optimize, then confirm
+  with an interleaved `benchstat` comparison; no change ships on intuition.
+- **Never at the cost of fidelity** — every perf change must keep the PUC
+  behaviour match and the conformance suite (30/33) green; speed never trumps
+  correctness.
+- **No silent regressions** — the `lua/*_bench_test.go` benchmarks (e.g.
+  `BenchmarkTreeBuildExec`, `BenchmarkProtectedCall`) are the guardrail.
+
+Current levers, ordered by intent — not commitments:
 
 - **Execution alloc churn** — reduce per-instruction allocation frequency to cut
-  GC pressure (measurement-first: reproduce bench → profile → optimize).
+  GC pressure (the standing #1 lever; tree-build exec still allocates more than a
+  reference fork).
 - **Table get/set hot path** — trim bounds-check / indirection cost in
   `rawget`/`rawgetInt` (profile-identified hot spot).
-- **Instruction-budget execution limit** — an optional step/instruction cap for
-  sandboxes, reusing the debug-hook count mechanism (deferred; context-based
-  cancellation already ships).
 - **Runtime string interning** — on hold; compile-time interning already covers
   the measured win. Reopen only with a benchmark justification.
+
+(Shipped: the per-State limit options and `SetInstructionLimit` — see
+[`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md).)
 
 ## Contributing to the roadmap
 
