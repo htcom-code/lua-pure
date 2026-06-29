@@ -12,8 +12,7 @@ body:
     id: reproducer
     attributes:
       label: Minimal Lua reproducer
-      description: The smallest script that triggers the bug. It will be rendered as Lua.
-      render: lua
+      description: The smallest Lua script that triggers the bug.
       placeholder: |
         local t = setmetatable({}, { __index = function() return 1 end })
         print(t.x)
