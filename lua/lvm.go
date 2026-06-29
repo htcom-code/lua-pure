@@ -527,14 +527,44 @@ func (L *LState) pushClosure(p *Proto, encup []*Upvalue, base, ra int) {
 
 // --- arithmetic helpers (op_arith_aux / op_arithf_aux / op_bitwise) ---
 
-func arithIF(v1, v2 Value, iop func(int64, int64) int64, fop func(float64, float64) float64) (Value, bool) {
+// addIF/subIF/mulIF are monomorphic fast paths for the arithmetic opcodes
+// (OP_ADD/SUB/MUL and their K variants). Taking no function-pointer arguments
+// lets the int/float ops inline as direct calls — the indirect call through a
+// shared generic helper was a measurable share of arith-heavy execution (the
+// hot dispatch loop spends ~all its time here). The int wrap (iAdd) and float
+// (fAdd) semantics are the same as the per-op functions they call.
+func addIF(v1, v2 Value) (Value, bool) {
 	if v1.IsInt() && v2.IsInt() {
-		return Int(iop(v1.AsInt(), v2.AsInt())), true
+		return Int(iAdd(v1.AsInt(), v2.AsInt())), true
 	}
-	n1, ok1 := toNumberNS(v1)
-	n2, ok2 := toNumberNS(v2)
-	if ok1 && ok2 {
-		return Float(fop(n1, n2)), true
+	if n1, ok := toNumberNS(v1); ok {
+		if n2, ok := toNumberNS(v2); ok {
+			return Float(fAdd(n1, n2)), true
+		}
+	}
+	return Value{}, false
+}
+
+func subIF(v1, v2 Value) (Value, bool) {
+	if v1.IsInt() && v2.IsInt() {
+		return Int(iSub(v1.AsInt(), v2.AsInt())), true
+	}
+	if n1, ok := toNumberNS(v1); ok {
+		if n2, ok := toNumberNS(v2); ok {
+			return Float(fSub(n1, n2)), true
+		}
+	}
+	return Value{}, false
+}
+
+func mulIF(v1, v2 Value) (Value, bool) {
+	if v1.IsInt() && v2.IsInt() {
+		return Int(iMul(v1.AsInt(), v2.AsInt())), true
+	}
+	if n1, ok := toNumberNS(v1); ok {
+		if n2, ok := toNumberNS(v2); ok {
+			return Float(fMul(n1, n2)), true
+		}
 	}
 	return Value{}, false
 }
@@ -548,11 +578,50 @@ func arithFlt(v1, v2 Value, fop func(float64, float64) float64) (Value, bool) {
 	return Value{}, false
 }
 
-func arithBit(v1, v2 Value, bop func(int64, int64) int64) (Value, bool) {
-	i1, ok1 := toIntegerNS(v1)
-	i2, ok2 := toIntegerNS(v2)
-	if ok1 && ok2 {
-		return Int(bop(i1, i2)), true
+// bandIF/borIF/bxorIF/shlIF/shrIF are monomorphic fast paths for the bitwise
+// opcodes, mirroring addIF/subIF/mulIF: no function-pointer argument, so the
+// int op inlines as a direct call.
+func bandIF(v1, v2 Value) (Value, bool) {
+	if i1, ok := toIntegerNS(v1); ok {
+		if i2, ok := toIntegerNS(v2); ok {
+			return Int(iBAnd(i1, i2)), true
+		}
+	}
+	return Value{}, false
+}
+
+func borIF(v1, v2 Value) (Value, bool) {
+	if i1, ok := toIntegerNS(v1); ok {
+		if i2, ok := toIntegerNS(v2); ok {
+			return Int(iBOr(i1, i2)), true
+		}
+	}
+	return Value{}, false
+}
+
+func bxorIF(v1, v2 Value) (Value, bool) {
+	if i1, ok := toIntegerNS(v1); ok {
+		if i2, ok := toIntegerNS(v2); ok {
+			return Int(iBXor(i1, i2)), true
+		}
+	}
+	return Value{}, false
+}
+
+func shlIF(v1, v2 Value) (Value, bool) {
+	if i1, ok := toIntegerNS(v1); ok {
+		if i2, ok := toIntegerNS(v2); ok {
+			return Int(iShl(i1, i2)), true
+		}
+	}
+	return Value{}, false
+}
+
+func shrIF(v1, v2 Value) (Value, bool) {
+	if i1, ok := toIntegerNS(v1); ok {
+		if i2, ok := toIntegerNS(v2); ok {
+			return Int(iShr(i1, i2)), true
+		}
 	}
 	return Value{}, false
 }

@@ -145,21 +145,21 @@ frame:
 
 			// --- arithmetic with immediate / register / constant operands ---
 			case OP_ADDI:
-				if arithImm(L, ra, L.stack[base+GetArgB(i)], GetArgsC(i), iAdd, fAdd) {
+				if addImm(L, ra, L.stack[base+GetArgB(i)], GetArgsC(i)) {
 					pc++
 				}
 			case OP_ADDK:
-				if v, ok := arithIF(L.stack[base+GetArgB(i)], k[GetArgC(i)], iAdd, fAdd); ok {
+				if v, ok := addIF(L.stack[base+GetArgB(i)], k[GetArgC(i)]); ok {
 					L.stack[ra] = v
 					pc++
 				}
 			case OP_SUBK:
-				if v, ok := arithIF(L.stack[base+GetArgB(i)], k[GetArgC(i)], iSub, fSub); ok {
+				if v, ok := subIF(L.stack[base+GetArgB(i)], k[GetArgC(i)]); ok {
 					L.stack[ra] = v
 					pc++
 				}
 			case OP_MULK:
-				if v, ok := arithIF(L.stack[base+GetArgB(i)], k[GetArgC(i)], iMul, fMul); ok {
+				if v, ok := mulIF(L.stack[base+GetArgB(i)], k[GetArgC(i)]); ok {
 					L.stack[ra] = v
 					pc++
 				}
@@ -182,17 +182,17 @@ frame:
 					pc++
 				}
 			case OP_BANDK:
-				if v, ok := arithBit(L.stack[base+GetArgB(i)], k[GetArgC(i)], iBAnd); ok {
+				if v, ok := bandIF(L.stack[base+GetArgB(i)], k[GetArgC(i)]); ok {
 					L.stack[ra] = v
 					pc++
 				}
 			case OP_BORK:
-				if v, ok := arithBit(L.stack[base+GetArgB(i)], k[GetArgC(i)], iBOr); ok {
+				if v, ok := borIF(L.stack[base+GetArgB(i)], k[GetArgC(i)]); ok {
 					L.stack[ra] = v
 					pc++
 				}
 			case OP_BXORK:
-				if v, ok := arithBit(L.stack[base+GetArgB(i)], k[GetArgC(i)], iBXor); ok {
+				if v, ok := bxorIF(L.stack[base+GetArgB(i)], k[GetArgC(i)]); ok {
 					L.stack[ra] = v
 					pc++
 				}
@@ -207,17 +207,17 @@ frame:
 					pc++
 				}
 			case OP_ADD:
-				if v, ok := arithIF(L.stack[base+GetArgB(i)], L.stack[base+GetArgC(i)], iAdd, fAdd); ok {
+				if v, ok := addIF(L.stack[base+GetArgB(i)], L.stack[base+GetArgC(i)]); ok {
 					L.stack[ra] = v
 					pc++
 				}
 			case OP_SUB:
-				if v, ok := arithIF(L.stack[base+GetArgB(i)], L.stack[base+GetArgC(i)], iSub, fSub); ok {
+				if v, ok := subIF(L.stack[base+GetArgB(i)], L.stack[base+GetArgC(i)]); ok {
 					L.stack[ra] = v
 					pc++
 				}
 			case OP_MUL:
-				if v, ok := arithIF(L.stack[base+GetArgB(i)], L.stack[base+GetArgC(i)], iMul, fMul); ok {
+				if v, ok := mulIF(L.stack[base+GetArgB(i)], L.stack[base+GetArgC(i)]); ok {
 					L.stack[ra] = v
 					pc++
 				}
@@ -240,27 +240,27 @@ frame:
 					pc++
 				}
 			case OP_BAND:
-				if v, ok := arithBit(L.stack[base+GetArgB(i)], L.stack[base+GetArgC(i)], iBAnd); ok {
+				if v, ok := bandIF(L.stack[base+GetArgB(i)], L.stack[base+GetArgC(i)]); ok {
 					L.stack[ra] = v
 					pc++
 				}
 			case OP_BOR:
-				if v, ok := arithBit(L.stack[base+GetArgB(i)], L.stack[base+GetArgC(i)], iBOr); ok {
+				if v, ok := borIF(L.stack[base+GetArgB(i)], L.stack[base+GetArgC(i)]); ok {
 					L.stack[ra] = v
 					pc++
 				}
 			case OP_BXOR:
-				if v, ok := arithBit(L.stack[base+GetArgB(i)], L.stack[base+GetArgC(i)], iBXor); ok {
+				if v, ok := bxorIF(L.stack[base+GetArgB(i)], L.stack[base+GetArgC(i)]); ok {
 					L.stack[ra] = v
 					pc++
 				}
 			case OP_SHL:
-				if v, ok := arithBit(L.stack[base+GetArgB(i)], L.stack[base+GetArgC(i)], iShl); ok {
+				if v, ok := shlIF(L.stack[base+GetArgB(i)], L.stack[base+GetArgC(i)]); ok {
 					L.stack[ra] = v
 					pc++
 				}
 			case OP_SHR:
-				if v, ok := arithBit(L.stack[base+GetArgB(i)], L.stack[base+GetArgC(i)], iShr); ok {
+				if v, ok := shrIF(L.stack[base+GetArgB(i)], L.stack[base+GetArgC(i)]); ok {
 					L.stack[ra] = v
 					pc++
 				}
@@ -665,14 +665,16 @@ func (L *LState) arithIDiv(ra int, v1, v2 Value) bool {
 
 func (L *LState) arithIDivK(ra int, v1, v2 Value) bool { return L.arithIDiv(ra, v1, v2) }
 
-// arithImm handles an immediate arithmetic op (op_arithI): register op small int.
-func arithImm(L *LState, ra int, v1 Value, imm int, iop func(int64, int64) int64, fop func(float64, float64) float64) bool {
+// addImm is the monomorphic fast path for OP_ADDI (op_arithI: register + small
+// int), mirroring addIF: no function-pointer args, so iAdd/fAdd inline as
+// direct calls.
+func addImm(L *LState, ra int, v1 Value, imm int) bool {
 	if v1.IsInt() {
-		L.stack[ra] = Int(iop(v1.AsInt(), int64(imm)))
+		L.stack[ra] = Int(iAdd(v1.AsInt(), int64(imm)))
 		return true
 	}
 	if v1.IsFloat() {
-		L.stack[ra] = Float(fop(v1.AsFloat(), float64(imm)))
+		L.stack[ra] = Float(fAdd(v1.AsFloat(), float64(imm)))
 		return true
 	}
 	return false
