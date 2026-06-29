@@ -1,7 +1,10 @@
 -- tree_build: build a balanced binary tree from a flat node map, then DFS-sum.
 -- Pure in-memory table work. Common Lua 5.1/5.4 syntax.
+-- N is sized so the loop runs ~100ms+ per pass: short runs let fixed costs
+-- (state init, first GC cycle, os.clock resolution) inflate the cross-engine
+-- ratio, so this measures steady-state throughput.
 local function work()
-  local N = 20000
+  local N = 200000
   local nodes = {}
   for i = 1, N do
     nodes[i] = { i, (i > 1) and math.floor(i / 2) or 0, (i * 2654435761) % 1000003, {} }

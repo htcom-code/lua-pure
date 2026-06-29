@@ -1,6 +1,9 @@
 package luapure
 
-import "strings"
+import (
+	"strings"
+	"sync"
+)
 
 // Lua pattern matching (lstrlib.c match engine), ported to operate on byte
 // slices with integer indices. Captures track an init offset and a length, with
@@ -371,6 +374,32 @@ func newMatchState(L *LState, s, p string) *matchState {
 	return &matchState{L: L, src: []byte(s), pat: []byte(p), depth: maxMatchDepth}
 }
 
+// matchStatePool recycles matchState values for the call-scoped pattern
+// functions (find/match/gsub). A matchState carries a fixed maxCaptures array
+// plus src/pat byte buffers; allocating one per call showed up as ~7% of
+// string-workload allocations. The capture array holds only ints and the
+// byte buffers hold no Lua pointers, so reuse is safe — we only drop the L
+// reference on release so a pooled state never pins an LState.
+//
+// gmatch is excluded on purpose: its matchState escapes into the returned
+// iterator closure and outlives the call, so it keeps using newMatchState.
+var matchStatePool = sync.Pool{New: func() any { return &matchState{} }}
+
+func acquireMatchState(L *LState, s, p string) *matchState {
+	ms := matchStatePool.Get().(*matchState)
+	ms.L = L
+	ms.src = append(ms.src[:0], s...) // reuse backing array across calls
+	ms.pat = append(ms.pat[:0], p...)
+	ms.level = 0
+	ms.depth = maxMatchDepth
+	return ms
+}
+
+func releaseMatchState(ms *matchState) {
+	ms.L = nil // don't pin the LState in the pool
+	matchStatePool.Put(ms)
+}
+
 // --- the four pattern functions ---
 
 func strFind(L *LState) int  { return strFindAux(L, true) }
@@ -399,7 +428,8 @@ func strFindAux(L *LState, find bool) int {
 		L.Push(Nil)
 		return 1
 	}
-	ms := newMatchState(L, s, p)
+	ms := acquireMatchState(L, s, p)
+	defer releaseMatchState(ms)
 	anchor := false
 	pp := 0
 	if len(ms.pat) > 0 && ms.pat[0] == '^' {
@@ -498,7 +528,8 @@ func strGsub(L *LState) int {
 	repl := L.Arg(3)
 	maxN := L.optInt(4, int64(len(s))+1)
 
-	ms := newMatchState(L, s, p)
+	ms := acquireMatchState(L, s, p)
+	defer releaseMatchState(ms)
 	anchor := false
 	pp := 0
 	if len(ms.pat) > 0 && ms.pat[0] == '^' {

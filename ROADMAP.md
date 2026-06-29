@@ -67,8 +67,8 @@ reference. The discipline is fixed:
   `BenchmarkTreeBuildExec`, `BenchmarkProtectedCall`) are the guardrail.
 
 Current standing vs other engines (latest snapshot in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md)):
-within ~1.5× of the reference C interpreter (and its cgo binding, aarzilli/golua)
-on table/string work, ~2.45× on a tight float loop — as pure Go, with no cgo.
+within ~1.2–1.3× of the reference C interpreter (and its cgo binding, aarzilli/golua)
+on table/string work, ~2.2× on a tight float loop — as pure Go, with no cgo.
 
 Current levers, ordered by intent — not commitments:
 
