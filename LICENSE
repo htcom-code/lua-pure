@@ -19,9 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-----------------------------------------------------------------------------
-
-This project is a Go port of PUC-Lua 5.4, which is itself MIT-licensed
-(Copyright (C) 1994-2025 Lua.org, PUC-Rio). That notice is retained in
-LICENSE-Lua, as the Lua license requires.
