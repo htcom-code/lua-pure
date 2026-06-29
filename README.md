@@ -43,7 +43,7 @@ C toolchain, luapure is the gap the table above shows.
 
 ## Performance
 
-Pure Go costs roughly **1.3–1.6× PUC on table/string work and ~2.45× on a tight
+Pure Go costs roughly **1.2–1.3× PUC on table/string work and ~2.2× on a tight
 arithmetic loop** — measured back-to-back against the C interpreter, with no
 cgo. See [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) for the full cross-engine
 numbers (PUC vs cgo bindings vs luapure) and methodology.

@@ -9,6 +9,14 @@ separately from the luapure release version.
 
 ## [Unreleased]
 
+### Changed
+- **Performance.** Inlined the monomorphic arith/bit fast paths
+  (`OP_ADD`/`SUB`/`MUL`, the bitwise ops, and `OP_ADDI`): replacing the shared
+  function-pointer helpers with per-op variants lets the int/float ops inline as
+  direct calls. A tight float loop drops from ~2.45× to ~2.2× PUC; the in-repo
+  `ArithHeavyExec` benchmark is ~10% faster (`benchstat`, no allocation change).
+  Behaviour is bit-identical and conformance is unchanged.
+
 ### Planned
 - Track **PUC-Lua 5.5** as it stabilizes upstream (see [`ROADMAP.md`](ROADMAP.md)).
 - Performance: reduce execution-time allocation churn; trim the table get/set

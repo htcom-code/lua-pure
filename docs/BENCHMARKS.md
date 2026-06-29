@@ -29,30 +29,38 @@ Lower is faster. Ratio = engine ÷ PUC (1.00 = parity with the C interpreter).
 
 | workload | PUC (s) | golua (cgo) | luapure (pure Go) |
 |---|---:|---:|---:|
-| `tree_build` — build + DFS-sum a 20k-node tree | 0.0096 | ~1.0× | **1.45×** |
-| `arith` — 4M-iteration float loop | 0.122 | ~1.0× | **2.45×** |
-| `string_build` — format + concat 120k strings | 0.064 | ~1.0× | **1.47×** |
+| `tree_build` — build + DFS-sum a 200k-node tree | 0.111 | ~1.0× | **1.24×** |
+| `arith` — 4M-iteration float loop | 0.120 | ~1.0× | **2.19×** |
+| `string_build` — format + concat 1.2M strings | 0.689 | ~1.0× | **1.31×** |
+
+Each workload is sized so a single pass runs ~100 ms or more. Short runs let
+fixed costs (state init, the first GC cycle, `os.clock` resolution) dominate and
+*inflate* the ratio — at a 20k-node tree the same `tree_build` reads as 1.8×,
+which is a measurement artifact, not the steady-state cost.
 
 **Takeaways**
 - **golua (cgo) ≈ PUC** (~1.0×) — expected, since it executes the very same C
   interpreter; it mainly shows that the cgo call layer adds little for
   whole-script runs.
-- **luapure (pure Go) costs ~1.3–1.6× on table/string work and ~2.45× on a tight
+- **luapure (pure Go) costs ~1.2–1.3× on table/string work and ~2.2× on a tight
   float loop** versus the C engine — with **no cgo**: it cross-compiles, has no C
-  toolchain dependency, and gives one independent VM per goroutine. Closing the
-  arithmetic gap (alloc churn, hot-path) is the standing perf focus — see
+  toolchain dependency, and gives one independent VM per goroutine.
+- The arithmetic loop is the widest gap and the standing perf focus. Inlining the
+  monomorphic arith/bit fast paths (`addIF`/`mulIF`/… in `lua/lvm.go`) closed it
+  from ~2.45× to **~2.19×** here; the residual is Go's `switch` dispatch versus
+  C's computed-goto, which a bytecode-threading rewrite would address. See
   [`ROADMAP.md`](../ROADMAP.md).
 
 ## Provenance
 
 | | |
 |---|---|
-| machine | Darwin x86_64 (Intel Core i7-4790K) |
-| date | 2026-06-28 |
-| luapure commit | `c87ce8f` |
-| Go | 1.24.0 |
+| machine | Darwin x86_64 (Intel Core i7-4790K @ 4.0 GHz) |
+| date | 2026-06-29 |
+| luapure commit | `06d1c54` (branch `perf/arith-vs-puc`) |
+| Go | 1.24 |
 | golua | `aarzilli/golua` (cgo) against Homebrew `lua@5.4` (Lua 5.4.8), built `-tags "lua54 llua"` |
-| method | same self-timed `.lua` on each engine; **best of 7** `os.clock()` CPU-time runs |
+| method | same self-timed `.lua` on each engine; **best of 7** `os.clock()` CPU-time runs, cross-checked back-to-back over several rounds; workloads sized to ~100 ms+ per pass |
 
 ## How to reproduce
 
