@@ -1,0 +1,58 @@
+name: Bug report
+description: A correctness bug — luapure behaves differently from PUC-Lua 5.4.8, crashes, or misbehaves.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. luapure aims to match **PUC-Lua 5.4.8** behaviour,
+        so the most useful bug reports compare the two. Security issues: do **not**
+        file here — see [SECURITY.md](../blob/main/SECURITY.md).
+  - type: textarea
+    id: reproducer
+    attributes:
+      label: Minimal Lua reproducer
+      description: The smallest script that triggers the bug. It will be rendered as Lua.
+      render: lua
+      placeholder: |
+        local t = setmetatable({}, { __index = function() return 1 end })
+        print(t.x)
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour (PUC-Lua 5.4.8)
+      description: What `lua5.4` prints / does for the same script. Paste the reference output if you can.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour (luapure)
+      description: What luapure does instead — output, error message, panic, or stack trace.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: luapure version / commit
+      description: Release tag (e.g. v0.1.0) or commit SHA.
+      placeholder: "v0.1.0 or abc1234"
+    validations:
+      required: true
+  - type: input
+    id: goenv
+    attributes:
+      label: Go version & OS/arch
+      description: Output of `go version`.
+      placeholder: "go1.24 darwin/arm64"
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: Embedding API usage, sandbox config, or other context.
+    validations:
+      required: false
