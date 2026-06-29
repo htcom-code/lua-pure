@@ -1,0 +1,40 @@
+name: Feature request
+description: Suggest an embedding-API capability or other enhancement (not a Lua language change).
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        luapure **tracks PUC-Lua upstream** and does not invent Lua language
+        extensions — changes to the language surface come from porting new PUC
+        releases (see [ROADMAP.md](../blob/main/ROADMAP.md)). Requests for the
+        Go-native **embedding API** (options, conversions, lifecycle, sandboxing)
+        and tooling are welcome here.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+      description: What are you trying to do, and what's missing or awkward today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: The API or behaviour you'd like. A sketch of the Go call site helps.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you've tried or other designs you weighed.
+    validations:
+      required: false
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This is not a request to change the Lua language surface away from PUC-Lua 5.4.8.
+          required: true
